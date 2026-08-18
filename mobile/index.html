@@ -920,35 +920,62 @@ const WHATSAPP_FILLER_WORDS = [
 // with a saved contact's name showing up anywhere in the sentence, is
 // enough to route to WhatsApp (e.g. "Ali ko bol do main araha hn").
 const SEND_MESSAGE_TRIGGER_WORDS = [
-  "message", "whatsapp", "text", "send", "bhejo", "bhej do", "bhej dena",
-  "bolo", "bol do", "bol dena", "keh do", "keh dena", "kehna", "kaho",
-  "bata do", "bata dena", "batao", "tell him", "tell her", "tell them", "inform"
+  "message", "whatsapp", "text", "send", "bhejo", "bhej do", "bhej dena", "bhej dain",
+  "bolo", "bol do", "bol dena", "bol dain", "keh do", "keh dena", "keh dain", "kehna", "kaho",
+  "bata do", "bata dena", "bata dain", "batao", "tell him", "tell her", "tell them", "inform",
+  "puch lo", "puch do", "pucho", "poocho", "ask him", "ask her", "let him know", "let her know",
+  "let them know", "ko keh", "ko bol", "ko bata", "se keh", "se bol", "se bata", "ko msg",
+  "ko message", "ko likh", "likh do", "likh dena", "reply", "jawab do", "yaad dila"
 ];
+
+// Find which saved contact is mentioned anywhere in the sentence — either by
+// their full saved name, or by any single word within it (e.g. just "Abdul"
+// when the contact is saved as "Mian Abdul"). Full-name matches are treated
+// as more confident/specific than a lone first/last-name match.
+function findContactMatch(command) {
+  let best = null; // { name, idx, matchLen, isFullName }
+  for (const name of Object.keys(contacts)) {
+    const lname = name.toLowerCase();
+    const fullIdx = command.indexOf(lname);
+    if (fullIdx !== -1) {
+      if (!best || lname.length > best.matchLen) {
+        best = { name, idx: fullIdx, matchLen: lname.length, isFullName: true };
+      }
+      continue;
+    }
+    // No full-name hit — try individual name parts (first name, last name...),
+    // requiring a whole-word match so short substrings inside other words
+    // ("ali" inside "aliens") don't accidentally match.
+    const tokens = lname.split(/\s+/).filter(tok => tok.length >= 3);
+    for (const tok of tokens) {
+      const re = new RegExp("\\b" + tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
+      const m = command.match(re);
+      if (m && (!best || tok.length > best.matchLen)) {
+        best = { name, idx: m.index, matchLen: tok.length, isFullName: false };
+      }
+    }
+  }
+  return best;
+}
 
 function sendWhatsApp(command) {
   // Step 1: find which saved contact is mentioned anywhere in the sentence
   // (not just right after "whatsapp"/"message" — could be at the start,
   // middle, or end depending on how the person phrased it).
-  let matchedName = null;
-  let matchedAt = -1;
-  for (const name of Object.keys(contacts)) {
-    const idx = command.indexOf(name.toLowerCase());
-    if (idx !== -1 && (matchedName === null || name.length > matchedName.length)) {
-      matchedName = name;
-      matchedAt = idx;
-    }
-  }
+  const match = findContactMatch(command);
 
   // If there's no "whatsapp"/"message"/send-style cue at all AND no contact
   // found, this isn't a WhatsApp command we can make sense of.
-  if (!matchedName) {
+  if (!match) {
     speak(SEND_MESSAGE_TRIGGER_WORDS.some(w => command.includes(w)) ? t("contactNotFound") : t("whatsappUsage"));
     return;
   }
+  const matchedName = match.name;
+  const matchedAt = match.idx;
 
   // Step 2: strip the contact's name out, then strip trigger/filler words,
   // whatever is left over is the actual message.
-  let text = command.slice(0, matchedAt) + " " + command.slice(matchedAt + matchedName.length);
+  let text = command.slice(0, matchedAt) + " " + command.slice(matchedAt + match.matchLen);
   const fillerPattern = new RegExp(
     "\\b(" + WHATSAPP_FILLER_WORDS.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")\\b",
     "g"
@@ -1092,14 +1119,17 @@ function runCommand(rawCommand) {
       speak(t("scheduleUnavailable"));
     }
     else if (WEATHER_WORDS.some(w => command.includes(w))) { checkWeather(command); }
-    else if (!command.startsWith("open ") && (
-      command.startsWith("message ") ||
-      command.includes("whatsapp") ||
-      // natural phrasing: a saved contact's name + a send-style word,
-      // anywhere in the sentence, in any order — e.g. "Ali ko bol do..."
-      (SEND_MESSAGE_TRIGGER_WORDS.some(w => command.includes(w)) &&
-       Object.keys(contacts).some(name => command.includes(name.toLowerCase())))
-    )) { sendWhatsApp(command); }
+    else if (!command.startsWith("open ") && (() => {
+      if (command.startsWith("message ") || command.includes("whatsapp")) return true;
+      const contactMatch = findContactMatch(command);
+      if (!contactMatch) return false;
+      // A saved contact's FULL name being mentioned is confident enough on
+      // its own — no extra trigger word needed (e.g. "Mian Abdul yr kesy ho").
+      if (contactMatch.isFullName) return true;
+      // Only part of the name matched (e.g. just "Abdul") — require a
+      // send-style word too, so casual mentions don't misfire.
+      return SEND_MESSAGE_TRIGGER_WORDS.some(w => command.includes(w));
+    })()) { sendWhatsApp(command); }
     else if (command.startsWith("close ") || command.startsWith("quit ")) {
       speak(t("closingApps"));
     }
