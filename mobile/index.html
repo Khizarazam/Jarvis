@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Jarvis Mobile</title>
+<meta name="theme-color" content="#050c0f" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  :root{
+    --cyan:#00e5ff;
+    --cyan-dim:#0a8fa3;
+    --bg:#050c0f;
+    --panel:#081418;
+    --panel-2:#0b1a1f;
+    --text:#d9f7fb;
+    --text-dim:#6fa3ab;
+    --danger:#ff5470;
+    --ok:#33ffb0;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:radial-gradient(ellipse at top, #0a1a1f 0%, #050c0f 60%, #020608 100%);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    overflow-x:hidden;
+    min-height:100vh;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .scanlines{
+    position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:repeating-linear-gradient(0deg, rgba(0,229,255,0.02) 0px, rgba(0,229,255,0.02) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode:screen;
+  }
+  .frame{
+    position:relative;
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    padding:18px 16px 90px;
+  }
+  .corner{position:absolute;width:28px;height:28px;border:2px solid var(--cyan);opacity:.85;filter:drop-shadow(0 0 4px var(--cyan));}
+  .corner.tl{top:8px;left:8px;border-right:none;border-bottom:none;}
+  .corner.tr{top:8px;right:8px;border-left:none;border-bottom:none;}
+  .corner.bl{bottom:8px;left:8px;border-right:none;border-top:none;}
+  .corner.br{bottom:8px;right:8px;border-left:none;border-top:none;}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 4px 18px;
+  }
+  .brand{display:flex;flex-direction:column;line-height:1.1;}
+  .brand .name{
+    font-size:22px;letter-spacing:4px;font-weight:700;color:var(--cyan);
+    text-shadow:0 0 12px rgba(0,229,255,.6);
+  }
+  .brand .sub{font-size:10px;letter-spacing:2px;color:var(--text-dim);margin-top:2px;}
+  .icon-btn{
+    background:transparent;border:1px solid var(--cyan-dim);color:var(--cyan);
+    width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:16px;cursor:pointer;
+  }
+  .icon-btn:active{background:rgba(0,229,255,.15);}
+
+  .radar-wrap{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:18px 0 10px;position:relative;
+  }
+  .radar{
+    width:200px;height:200px;border-radius:50%;
+    border:1px solid rgba(0,229,255,.25);
+    position:relative;display:flex;align-items:center;justify-content:center;
+  }
+  .radar::before,.radar::after{
+    content:"";position:absolute;border-radius:50%;border:1px solid rgba(0,229,255,.15);
+  }
+  .radar::before{width:140px;height:140px;}
+  .radar::after{width:80px;height:80px;}
+  .sweep{
+    position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(0,229,255,.35), transparent 40%);
+    animation:spin 3.2s linear infinite;
+    opacity:.55;
+  }
+  .radar.state-idle .sweep{animation-play-state:paused;opacity:.15;}
+  .radar.state-listening .sweep{animation-duration:1.6s;}
+  .radar.state-thinking .sweep{animation-duration:.6s;}
+  .radar.state-speaking .sweep{animation-duration:1s;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .mic-btn{
+    position:relative;z-index:2;width:74px;height:74px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #0f2b31, #041014);
+    border:1px solid var(--cyan);color:var(--cyan);
+    display:flex;align-items:center;justify-content:center;font-size:28px;
+    cursor:pointer;box-shadow:0 0 18px rgba(0,229,255,.35), inset 0 0 12px rgba(0,229,255,.15);
+  }
+  .mic-btn.active{box-shadow:0 0 28px rgba(0,229,255,.75), inset 0 0 14px rgba(0,229,255,.3);}
+  .status-text{
+    margin-top:14px;font-size:12px;letter-spacing:3px;color:var(--text-dim);text-transform:uppercase;
+  }
+  .status-text b{color:var(--cyan);font-weight:600;}
+  .clock{font-size:11px;color:var(--text-dim);margin-top:6px;letter-spacing:1px;}
+
+  .panel{
+    background:linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid rgba(0,229,255,.18);
+    border-radius:10px;
+    padding:12px;
+    margin-top:16px;
+  }
+  .panel h3{
+    margin:0 0 10px;font-size:11px;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;
+    display:flex;align-items:center;gap:6px;
+  }
+  .log{
+    height:220px;overflow-y:auto;font-size:13px;line-height:1.5;
+    display:flex;flex-direction:column;gap:8px;padding-right:4px;
+  }
+  .log::-webkit-scrollbar{width:4px;}
+  .log::-webkit-scrollbar-thumb{background:var(--cyan-dim);border-radius:4px;}
+  .bubble{padding:8px 10px;border-radius:8px;max-width:92%;word-wrap:break-word;}
+  .bubble.you{align-self:flex-end;background:rgba(0,229,255,.12);border:1px solid rgba(0,229,255,.25);}
+  .bubble.jarvis{align-self:flex-start;background:rgba(51,255,176,.08);border:1px solid rgba(51,255,176,.2);color:#c8fff0;}
+  .bubble.sys{align-self:center;color:var(--text-dim);font-size:11px;font-style:italic;background:none;border:none;}
+  .bubble .tag{display:block;font-size:9px;letter-spacing:1px;opacity:.6;margin-bottom:2px;}
+
+  .type-row{display:flex;gap:8px;margin-top:10px;}
+  .type-row input{
+    flex:1;background:#03090b;border:1px solid var(--cyan-dim);color:var(--text);
+    padding:10px 12px;border-radius:8px;font-size:14px;outline:none;
+  }
+  .type-row input:focus{border-color:var(--cyan);}
+  .type-row button{
+    background:var(--cyan);color:#00252b;border:none;border-radius:8px;padding:0 16px;font-weight:700;font-size:13px;cursor:pointer;
+  }
+
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .chip{
+    background:rgba(0,229,255,.08);border:1px solid var(--cyan-dim);color:var(--text);
+    font-size:11px;padding:7px 10px;border-radius:20px;cursor:pointer;white-space:nowrap;
+  }
+  .chip:active{background:rgba(0,229,255,.2);}
+
+  .bottom-nav{
+    position:fixed;bottom:0;left:0;right:0;
+    display:flex;justify-content:center;gap:10px;
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(0deg, rgba(2,6,8,.96), rgba(2,6,8,.75));
+    border-top:1px solid rgba(0,229,255,.15);
+    z-index:10;
+  }
+  .nav-btn{
+    flex:1;max-width:480px;background:transparent;border:1px solid var(--cyan-dim);color:var(--cyan);
+    padding:12px 10px;border-radius:8px;font-size:12px;letter-spacing:1px;cursor:pointer;
+  }
+  .nav-btn.primary{background:var(--cyan);color:#00252b;font-weight:700;border-color:var(--cyan);}
+  .nav-btn.on{background:rgba(255,84,112,.15);border-color:var(--danger);color:var(--danger);}
+
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(2px);
+    display:none;align-items:flex-end;justify-content:center;z-index:50;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal{
+    width:100%;max-width:480px;max-height:86vh;overflow-y:auto;
+    background:var(--panel);border:1px solid rgba(0,229,255,.3);border-radius:16px 16px 0 0;
+    padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+  .modal h2{color:var(--cyan);font-size:15px;letter-spacing:2px;margin:0 0 14px;text-transform:uppercase;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:5px;letter-spacing:.5px;}
+  .field input,.field select,.field textarea{
+    width:100%;background:#03090b;border:1px solid var(--cyan-dim);color:var(--text);
+    padding:9px 10px;border-radius:6px;font-size:13px;outline:none;font-family:inherit;
+  }
+  .field textarea{min-height:90px;resize:vertical;font-family:monospace;font-size:12px;}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .switch{position:relative;width:44px;height:24px;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;inset:0;background:#1a2b2f;border-radius:24px;cursor:pointer;transition:.2s;}
+  .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#8fb;border-radius:50%;transition:.2s;background:var(--text-dim);}
+  .switch input:checked + .slider{background:rgba(0,229,255,.3);}
+  .switch input:checked + .slider::before{transform:translateX(20px);background:var(--cyan);}
+  .modal-actions{display:flex;gap:10px;margin-top:16px;}
+  .btn{flex:1;padding:11px;border-radius:8px;border:1px solid var(--cyan-dim);background:transparent;color:var(--text);font-size:13px;cursor:pointer;}
+  .btn.primary{background:var(--cyan);color:#00252b;font-weight:700;border-color:var(--cyan);}
+  .btn.danger{border-color:var(--danger);color:var(--danger);}
+  .note{font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:2px;}
+  .cmd-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px;}
+  .cmd-list li{font-size:12.5px;line-height:1.5;border-bottom:1px solid rgba(0,229,255,.1);padding-bottom:8px;}
+  .cmd-list li b{color:var(--cyan);}
+  .cmd-list li span.na{color:var(--danger);font-size:10.5px;display:block;margin-top:2px;}
+  .contact-row{display:flex;gap:6px;margin-bottom:8px;}
+  .contact-row input{flex:1;}
+  .remove-x{background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;width:36px;font-size:14px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div class="frame">
+  <div class="corner tl"></div><div class="corner tr"></div>
+  <div class="corner bl"></div><div class="corner br"></div>
+
+  <header>
+    <div class="brand">
+      <div class="name" id="brandName">JARVIS</div>
+      <div class="sub">MOBILE UNIT · v1.0</div>
+    </div>
+    <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
+  </header>
+
+  <div class="radar-wrap">
+    <div class="radar state-idle" id="radar">
+      <div class="sweep"></div>
+      <button class="mic-btn" id="micBtn">🎙</button>
+    </div>
+    <div class="status-text">STATUS: <b id="statusText">IDLE</b></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+
+  <div class="panel">
+    <h3>Conversation Log</h3>
+    <div class="log" id="log"></div>
+    <div class="type-row">
+      <input id="typeInput" type="text" placeholder="Type a command… e.g. what's the time" autocomplete="off" />
+      <button id="sendBtn">Send</button>
+    </div>
+    <div class="chip-row">
+      <div class="chip" data-cmd="what's the time">Time</div>
+      <div class="chip" data-cmd="what's the date">Date</div>
+      <div class="chip" data-cmd="weather">Weather</div>
+      <div class="chip" data-cmd="battery status">Battery</div>
+      <div class="chip" data-cmd="what is my name">My name?</div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-nav">
+  <button class="nav-btn primary" id="listenToggle">▶ START LISTENING</button>
+  <button class="nav-btn" id="commandsBtn">COMMANDS</button>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsOverlay">
+  <div class="modal">
+    <h2>⚙ Settings</h2>
+
+    <div class="field">
+      <label>Assistant name</label>
+      <input id="cfgName" type="text" />
+    </div>
+
+    <div class="field">
+      <label>Recognition / reply language</label>
+      <select id="cfgLang">
+        <option value="en-US">English (en-US)</option>
+        <option value="ur-PK">اردو / Urdu (ur-PK)</option>
+        <option value="hi-IN">हिन्दी / Hindi (hi-IN)</option>
+        <option value="ar-SA">العربية / Arabic (ar-SA)</option>
+        <option value="fr-FR">Français / French (fr-FR)</option>
+        <option value="es-ES">Español / Spanish (es-ES)</option>
+        <option value="de-DE">Deutsch / German (de-DE)</option>
+        <option value="tr-TR">Türkçe / Turkish (tr-TR)</option>
+        <option value="bn-BD">বাংলা / Bengali (bn-BD)</option>
+        <option value="pa-IN">ਪੰਜਾਬੀ / Punjabi (pa-IN)</option>
+        <option value="zh-CN">中文 / Chinese (zh-CN)</option>
+      </select>
+      <div class="note" id="langNote">This changes what the microphone listens for, the voice used to reply, and (for the first 6 languages) also translates Jarvis's replies. Roman Urdu/Hindi commands are understood regardless of this setting.</div>
+    </div>
+
+    <div class="toggle-row">
+      <label style="font-size:12px;color:var(--text-dim);">Wake word enabled</label>
+      <label class="switch"><input type="checkbox" id="cfgWakeEnabled" /><span class="slider"></span></label>
+    </div>
+    <div class="field">
+      <label>Wake word</label>
+      <input id="cfgWakeWord" type="text" placeholder="jarvis" />
+    </div>
+
+    <div class="field">
+      <label>OpenWeatherMap API key (free, from openweathermap.org/api)</label>
+      <input id="cfgWeatherKey" type="text" placeholder="paste key here" />
+    </div>
+    <div class="field">
+      <label>Default city</label>
+      <input id="cfgCity" type="text" placeholder="Lahore" />
+    </div>
+
+    <div class="field">
+      <label>Contacts (for WhatsApp messages)</label>
+      <div id="contactsList"></div>
+      <button class="btn" id="addContactBtn" type="button" style="margin-top:4px;">+ Add contact</button>
+    </div>
+
+    <div class="field">
+      <label>Memory</label>
+      <div class="note" id="memoryPreview">—</div>
+      <button class="btn danger" id="resetMemoryBtn" type="button" style="margin-top:8px;">Reset memory</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="settingsCancel">Close</button>
+      <button class="btn primary" id="settingsSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Commands Modal -->
+<div class="modal-overlay" id="commandsOverlay">
+  <div class="modal">
+    <h2>📋 Commands</h2>
+    <ul class="cmd-list" id="cmdList"></ul>
+    <div class="modal-actions">
+      <button class="btn primary" id="commandsClose" style="flex:1;">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   Jarvis Mobile — phone/browser port of the desktop assistant.
+   No installs, no Windows-only APIs. Runs entirely client-side.
+   ========================================================================= */
+
+// ---------- storage ----------
+const LS_CONFIG = "jarvis_mobile_config";
+const LS_CONTACTS = "jarvis_mobile_contacts";
+const LS_MEMORY = "jarvis_mobile_memory";
+
+const DEFAULT_CONFIG = {
+  assistant_name: "Jarvis",
+  language: "en-US",
+  weather_api_key: "",
+  default_city: "Lahore",
+  wake_word: "jarvis",
+  wake_word_enabled: true
+};
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return structuredClone(fallback);
+    return { ...structuredClone(fallback), ...JSON.parse(raw) };
+  } catch (e) { return structuredClone(fallback); }
+}
+function saveJSON(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+
+let config = loadJSON(LS_CONFIG, DEFAULT_CONFIG);
+let contacts = loadJSON(LS_CONTACTS, { "Ali": "+923001234567" });
+let memory = loadJSON(LS_MEMORY, { user_name: null, facts: {} });
+
+// ---------- translations ----------
+// Fully translated: en-US, ur-PK, hi-IN, ar-SA, fr-FR, es-ES.
+// Other languages in the picker (de-DE, tr-TR, bn-BD, pa-IN, zh-CN) still get
+// correctly-tuned microphone recognition + a matching voice for replies,
+// but the reply *text* falls back to English until someone adds a full
+// translation block for them below (same shape as the ones already here).
+const TRANSLATIONS = {
+  "en-US": {
+    ready: (n) => `${n} mobile ready. Tap ▶ Start Listening for voice, or just type a command below.`,
+    noSpeechSupport: "Voice recognition isn't supported in this browser (common on iPhone). Typed commands work fully — try 'what's the time'.",
+    yes: "Yes?",
+    goodbye: "Goodbye.",
+    micDenied: "Microphone permission denied or blocked. Type commands instead, or allow mic access in the browser's site settings.",
+    nameSaved: (n) => `Okay, I'll remember that your name is ${n}.`,
+    nameRecall: (n) => `Your name is ${n}.`,
+    nameUnknown: "I don't know your name yet. You can tell me: my name is Ali.",
+    factSaved: (k, v) => `Okay, I'll remember that ${k} is ${v}.`,
+    factRecall: (k, v) => `${k} is ${v}.`,
+    scheduleUnavailable: "Ad scheduling needs the desktop version with Meta Ads Manager access — not available on the phone build.",
+    weatherNotSetup: "Weather isn't set up yet. Add a free OpenWeatherMap API key in Settings.",
+    weatherError: (city, msg) => `I couldn't get the weather for ${city}. ${msg}`,
+    weatherResult: (temp, city, feels, desc) => `It's ${temp} degrees in ${city}, feels like ${feels}, with ${desc}.`,
+    weatherNetErr: "I couldn't reach the weather service. Check your internet connection.",
+    whatsappUsage: "Say it like: message Ali tell him I'm on my way.",
+    contactNotFound: "I don't have that contact saved. Add their name and number in Settings first.",
+    openingWhatsapp: (n) => `Opening WhatsApp for ${n}.`,
+    closingApps: "Closing other apps isn't something a web page is allowed to do on a phone, for security reasons.",
+    screenshotUnavailable: "Browsers can't trigger a screenshot on a phone. Use your phone's power+volume screenshot shortcut instead.",
+    wifiUnavailable: "Reading a saved Wi-Fi password isn't something a phone browser can do, for security reasons — check it in your phone's Wi-Fi settings.",
+    cpuUnavailable: "CPU and memory stats aren't exposed to web pages on phones. Battery status I can still check.",
+    volumeUnavailable: "Volume control isn't something a web page is allowed to do on a phone, for security reasons.",
+    powerUnavailable: "Power controls like shutdown, restart, lock, and sleep aren't something a web page is allowed to do on a phone, for security reasons.",
+    whichWebsite: "Which website should I open?",
+    openingSite: (s) => `Opening ${s}.`,
+    openingApp: (a) => `Opening ${a}.`,
+    appNotLaunchable: (a) => `A browser can't launch ${a} directly on a phone for security reasons. Open it from your home screen instead.`,
+    appFallback: (a) => `I don't have ${a} as a known app. Trying it as a website instead.`,
+    searchWhat: "What should I search for?",
+    searching: (q) => `Searching for ${q}.`,
+    dateIs: (d) => `Today is ${d}.`,
+    timeIs: (t) => `It's ${t}.`,
+    batteryStatus: (pct, state) => `Battery is at ${pct} percent, ${state}.`,
+    batteryCharging: "charging",
+    batteryOnBattery: "on battery",
+    batteryUnavailable: "This browser won't share battery info with a web page. Check your phone's status bar or Settings app instead.",
+    notUnderstood: "I didn't understand that. Type 'commands' or tap the Commands button below to see what I can do.",
+    commandError: "Something went wrong with that command.",
+    settingsSaved: "Settings saved.",
+    memoryReset: "Memory reset.",
+  },
+  "ur-PK": {
+    ready: (n) => `${n} mobile taiyar hai. Voice ke liye ▶ Start Listening dabayein, ya neeche command type kar dein.`,
+    noSpeechSupport: "Is browser mein voice recognition support nahi hai (aksar iPhone pe). Typed commands poori tarah kaam karte hain — 'what's the time' try karein.",
+    yes: "Yes?",
+    goodbye: "Allah Hafiz.",
+    micDenied: "Microphone permission na di gayi ya block hai. Iske bajaye commands type karein, ya browser ki site settings mein mic access allow karein.",
+    nameSaved: (n) => `Theek hai, main yaad rakhunga ke aapka naam ${n} hai.`,
+    nameRecall: (n) => `Aapka naam ${n} hai.`,
+    nameUnknown: "Mujhe abhi tak pata nahi ke aapka naam kya hai. Aap mujhe bata sakte hain: my name is Ali.",
+    factSaved: (k, v) => `Theek hai, main yaad rakhunga ke ${k} ${v} hai.`,
+    factRecall: (k, v) => `${k} ${v} hai.`,
+    scheduleUnavailable: "Ad scheduling ke liye desktop version aur Meta Ads Manager access chahiye — phone build pe available nahi.",
+    weatherNotSetup: "Weather abhi set up nahi hua. Settings mein free OpenWeatherMap API key add karein.",
+    weatherError: (city, msg) => `${city} ka weather nahi mil saka. ${msg}`,
+    weatherResult: (temp, city, feels, desc) => `${city} mein abhi ${temp} degree hai, feels like ${feels}, aur ${desc}.`,
+    weatherNetErr: "Weather service tak nahi pahunch saka. Apna internet connection check karein.",
+    whatsappUsage: "Aise bolein: message Ali tell him I'm on my way.",
+    contactNotFound: "Ye contact save nahi hai. Pehle Settings mein naam aur number add karein.",
+    openingWhatsapp: (n) => `${n} ke liye WhatsApp khol raha hoon.`,
+    closingApps: "Dusri apps band karna phone browser security ki wajah se possible nahi.",
+    screenshotUnavailable: "Browser phone pe screenshot nahi le sakta. Phone ka power+volume screenshot shortcut use karein.",
+    wifiUnavailable: "Saved Wi-Fi password padhna security wajuhat ki bina par phone browser se possible nahi — phone ki Wi-Fi settings mein check karein.",
+    cpuUnavailable: "CPU aur memory stats phone browsers ko available nahi hote. Battery status abhi bhi check kar sakta hoon.",
+    volumeUnavailable: "Volume control security wajuhat ki bina par phone browser se possible nahi.",
+    powerUnavailable: "Shutdown, restart, lock, sleep jaisay power controls security wajuhat ki bina par phone browser se possible nahi.",
+    whichWebsite: "Kaunsi website kholun?",
+    openingSite: (s) => `${s} khol raha hoon.`,
+    openingApp: (a) => `${a} khol raha hoon.`,
+    appNotLaunchable: (a) => `Security wajuhat ki bina par browser ${a} ko seedha phone pe launch nahi kar sakta. Ise home screen se kholein.`,
+    appFallback: (a) => `${a} mere paas jaani-pehchani app nahi hai. Isay website ki tarah try kar raha hoon.`,
+    searchWhat: "Kya search karun?",
+    searching: (q) => `${q} search kar raha hoon.`,
+    dateIs: (d) => `Aaj ${d} hai.`,
+    timeIs: (t) => `Abhi ${t} baje hain.`,
+    batteryStatus: (pct, state) => `Battery ${pct} percent hai, ${state}.`,
+    batteryCharging: "charge ho rahi hai",
+    batteryOnBattery: "battery pe hai",
+    batteryUnavailable: "Ye browser battery info web page ke saath share nahi karega. Phone ki status bar ya Settings app check karein.",
+    notUnderstood: "Samajh nahi aaya. 'commands' type karein ya neeche Commands button dabayein taake pata chale main kya kar sakta hoon.",
+    commandError: "Us command mein kuch ghalat ho gaya.",
+    settingsSaved: "Settings save ho gayin.",
+    memoryReset: "Memory reset ho gayi.",
+  },
+  "hi-IN": {
+    ready: (n) => `${n} मोबाइल तैयार है। आवाज़ के लिए ▶ Start Listening दबाएं, या नीचे कमांड टाइप करें।`,
+    noSpeechSupport: "इस ब्राउज़र में वॉइस रिकग्निशन सपोर्ट नहीं है (अक्सर iPhone पर)। टाइप किए गए कमांड पूरी तरह काम करते हैं।",
+    yes: "जी?",
+    goodbye: "अलविदा।",
+    micDenied: "माइक्रोफ़ोन की अनुमति नहीं मिली। इसके बजाय कमांड टाइप करें, या ब्राउज़र सेटिंग्स में माइक की अनुमति दें।",
+    nameSaved: (n) => `ठीक है, मैं याद रखूंगा कि आपका नाम ${n} है।`,
+    nameRecall: (n) => `आपका नाम ${n} है।`,
+    nameUnknown: "मुझे अभी तक आपका नाम नहीं पता। आप मुझे बता सकते हैं: my name is Ali.",
+    factSaved: (k, v) => `ठीक है, मैं याद रखूंगा कि ${k} ${v} है।`,
+    factRecall: (k, v) => `${k} ${v} है।`,
+    scheduleUnavailable: "विज्ञापन शेड्यूल करने के लिए डेस्कटॉप वर्शन और Meta Ads Manager एक्सेस चाहिए — यह फ़ोन पर उपलब्ध नहीं है।",
+    weatherNotSetup: "मौसम अभी सेट अप नहीं हुआ। Settings में मुफ़्त OpenWeatherMap API key जोड़ें।",
+    weatherError: (city, msg) => `${city} का मौसम नहीं मिल सका। ${msg}`,
+    weatherResult: (temp, city, feels, desc) => `${city} में अभी ${temp} डिग्री है, ${feels} जैसा महसूस होता है, और ${desc}।`,
+    weatherNetErr: "मौसम सेवा तक नहीं पहुंच सका। अपना इंटरनेट कनेक्शन जांचें।",
+    whatsappUsage: "ऐसे कहें: message Ali tell him I'm on my way.",
+    contactNotFound: "यह संपर्क सेव नहीं है। पहले Settings में नाम और नंबर जोड़ें।",
+    openingWhatsapp: (n) => `${n} के लिए WhatsApp खोल रहा हूं।`,
+    closingApps: "सुरक्षा कारणों से फ़ोन पर वेब पेज दूसरी ऐप बंद नहीं कर सकता।",
+    screenshotUnavailable: "ब्राउज़र फ़ोन पर स्क्रीनशॉट नहीं ले सकता। फ़ोन का पावर+वॉल्यूम शॉर्टकट इस्तेमाल करें।",
+    wifiUnavailable: "सुरक्षा कारणों से सेव किया गया Wi-Fi पासवर्ड ब्राउज़र से नहीं पढ़ा जा सकता — फ़ोन की Wi-Fi सेटिंग्स में देखें।",
+    cpuUnavailable: "CPU और मेमोरी आंकड़े फ़ोन ब्राउज़र को उपलब्ध नहीं होते। बैटरी स्टेटस अभी भी बता सकता हूं।",
+    volumeUnavailable: "सुरक्षा कारणों से वॉल्यूम कंट्रोल फ़ोन ब्राउज़र से संभव नहीं।",
+    powerUnavailable: "शटडाउन, रीस्टार्ट, लॉक, स्लीप जैसे पावर कंट्रोल सुरक्षा कारणों से फ़ोन ब्राउज़र से संभव नहीं।",
+    whichWebsite: "कौन सी वेबसाइट खोलूं?",
+    openingSite: (s) => `${s} खोल रहा हूं।`,
+    openingApp: (a) => `${a} खोल रहा हूं।`,
+    appNotLaunchable: (a) => `सुरक्षा कारणों से ब्राउज़र ${a} को सीधे फ़ोन पर लॉन्च नहीं कर सकता। इसे होम स्क्रीन से खोलें।`,
+    appFallback: (a) => `${a} मेरे पास जानी-पहचानी ऐप नहीं है। इसे वेबसाइट की तरह खोलने की कोशिश कर रहा हूं।`,
+    searchWhat: "क्या खोजूं?",
+    searching: (q) => `${q} खोज रहा हूं।`,
+    dateIs: (d) => `आज ${d} है।`,
+    timeIs: (t) => `अभी ${t} बजे हैं।`,
+    batteryStatus: (pct, state) => `बैटरी ${pct} प्रतिशत है, ${state}।`,
+    batteryCharging: "चार्ज हो रही है",
+    batteryOnBattery: "बैटरी पर है",
+    batteryUnavailable: "यह ब्राउज़र बैटरी जानकारी वेब पेज के साथ साझा नहीं करेगा। फ़ोन की स्टेटस बार या Settings ऐप देखें।",
+    notUnderstood: "समझ नहीं आया। 'commands' टाइप करें या नीचे Commands बटन दबाएं।",
+    commandError: "उस कमांड में कुछ गड़बड़ हो गई।",
+    settingsSaved: "सेटिंग्स सेव हो गईं।",
+    memoryReset: "मेमोरी रीसेट हो गई।",
+  },
+  "ar-SA": {
+    ready: (n) => `${n} جاهز على الهاتف. اضغط ▶ لبدء الاستماع، أو اكتب أمرًا أدناه.`,
+    noSpeechSupport: "التعرف على الصوت غير مدعوم في هذا المتصفح (شائع على iPhone). الأوامر المكتوبة تعمل بشكل كامل.",
+    yes: "نعم؟",
+    goodbye: "مع السلامة.",
+    micDenied: "تم رفض إذن الميكروفون. اكتب الأوامر بدلاً من ذلك، أو اسمح بالوصول للميكروفون في إعدادات المتصفح.",
+    nameSaved: (n) => `حسنًا، سأتذكر أن اسمك ${n}.`,
+    nameRecall: (n) => `اسمك ${n}.`,
+    nameUnknown: "لا أعرف اسمك بعد. يمكنك إخباري: my name is Ali.",
+    factSaved: (k, v) => `حسنًا، سأتذكر أن ${k} هو ${v}.`,
+    factRecall: (k, v) => `${k} هو ${v}.`,
+    scheduleUnavailable: "جدولة الإعلانات تحتاج نسخة سطح المكتب وصلاحية Meta Ads Manager — غير متاحة في نسخة الهاتف.",
+    weatherNotSetup: "الطقس غير مُعد بعد. أضف مفتاح OpenWeatherMap مجاني في الإعدادات.",
+    weatherError: (city, msg) => `تعذر الحصول على طقس ${city}. ${msg}`,
+    weatherResult: (temp, city, feels, desc) => `الجو في ${city} الآن ${temp} درجة، يشعر وكأنه ${feels}، مع ${desc}.`,
+    weatherNetErr: "تعذر الوصول لخدمة الطقس. تحقق من اتصال الإنترنت.",
+    whatsappUsage: "قل هكذا: message Ali tell him I'm on my way.",
+    contactNotFound: "هذا الرقم غير محفوظ. أضف الاسم والرقم في الإعدادات أولاً.",
+    openingWhatsapp: (n) => `فتح WhatsApp لـ ${n}.`,
+    closingApps: "إغلاق تطبيقات أخرى غير مسموح به لصفحة ويب على الهاتف لأسباب أمنية.",
+    screenshotUnavailable: "لا يمكن للمتصفح التقاط لقطة شاشة على الهاتف. استخدم اختصار الهاتف (الطاقة + خفض الصوت).",
+    wifiUnavailable: "قراءة كلمة مرور Wi-Fi المحفوظة غير ممكنة من متصفح الهاتف لأسباب أمنية — تحقق من إعدادات Wi-Fi في هاتفك.",
+    cpuUnavailable: "إحصاءات المعالج والذاكرة غير متاحة لصفحات الويب على الهاتف. يمكنني التحقق من حالة البطارية.",
+    volumeUnavailable: "التحكم في مستوى الصوت غير ممكن من متصفح الهاتف لأسباب أمنية.",
+    powerUnavailable: "أدوات التحكم بالطاقة مثل الإيقاف وإعادة التشغيل والقفل والسكون غير ممكنة من متصفح الهاتف لأسباب أمنية.",
+    whichWebsite: "أي موقع أفتح؟",
+    openingSite: (s) => `فتح ${s}.`,
+    openingApp: (a) => `فتح ${a}.`,
+    appNotLaunchable: (a) => `لا يمكن للمتصفح تشغيل ${a} مباشرة على الهاتف لأسباب أمنية. افتحه من الشاشة الرئيسية.`,
+    appFallback: (a) => `${a} ليس تطبيقًا معروفًا لدي. سأحاول فتحه كموقع ويب.`,
+    searchWhat: "عن ماذا أبحث؟",
+    searching: (q) => `أبحث عن ${q}.`,
+    dateIs: (d) => `اليوم هو ${d}.`,
+    timeIs: (t) => `الساعة الآن ${t}.`,
+    batteryStatus: (pct, state) => `البطارية عند ${pct} بالمئة، ${state}.`,
+    batteryCharging: "قيد الشحن",
+    batteryOnBattery: "على البطارية",
+    batteryUnavailable: "هذا المتصفح لن يشارك معلومات البطارية مع صفحة ويب. تحقق من شريط الحالة أو تطبيق الإعدادات في هاتفك.",
+    notUnderstood: "لم أفهم ذلك. اكتب 'commands' أو اضغط زر Commands أدناه لرؤية ما يمكنني فعله.",
+    commandError: "حدث خطأ ما مع هذا الأمر.",
+    settingsSaved: "تم حفظ الإعدادات.",
+    memoryReset: "تمت إعادة تعيين الذاكرة.",
+  },
+  "fr-FR": {
+    ready: (n) => `${n} mobile est prêt. Appuyez sur ▶ pour écouter, ou tapez une commande ci-dessous.`,
+    noSpeechSupport: "La reconnaissance vocale n'est pas prise en charge par ce navigateur (fréquent sur iPhone). Les commandes tapées fonctionnent parfaitement.",
+    yes: "Oui ?",
+    goodbye: "Au revoir.",
+    micDenied: "Autorisation du microphone refusée ou bloquée. Tapez vos commandes, ou autorisez le micro dans les paramètres du site.",
+    nameSaved: (n) => `D'accord, je retiendrai que votre nom est ${n}.`,
+    nameRecall: (n) => `Votre nom est ${n}.`,
+    nameUnknown: "Je ne connais pas encore votre nom. Vous pouvez me dire : my name is Ali.",
+    factSaved: (k, v) => `D'accord, je retiendrai que ${k} est ${v}.`,
+    factRecall: (k, v) => `${k} est ${v}.`,
+    scheduleUnavailable: "La planification de publicités nécessite la version bureau avec accès Meta Ads Manager — non disponible sur mobile.",
+    weatherNotSetup: "La météo n'est pas encore configurée. Ajoutez une clé API OpenWeatherMap gratuite dans les paramètres.",
+    weatherError: (city, msg) => `Impossible d'obtenir la météo de ${city}. ${msg}`,
+    weatherResult: (temp, city, feels, desc) => `Il fait ${temp} degrés à ${city}, ressenti ${feels}, avec ${desc}.`,
+    weatherNetErr: "Impossible de joindre le service météo. Vérifiez votre connexion internet.",
+    whatsappUsage: "Dites par exemple : message Ali tell him I'm on my way.",
+    contactNotFound: "Ce contact n'est pas enregistré. Ajoutez son nom et numéro dans les paramètres d'abord.",
+    openingWhatsapp: (n) => `Ouverture de WhatsApp pour ${n}.`,
+    closingApps: "Fermer d'autres applications n'est pas autorisé pour une page web sur un téléphone, pour des raisons de sécurité.",
+    screenshotUnavailable: "Un navigateur ne peut pas déclencher une capture d'écran sur un téléphone. Utilisez le raccourci de votre téléphone (alimentation + volume bas).",
+    wifiUnavailable: "Lire un mot de passe Wi-Fi enregistré n'est pas possible depuis un navigateur mobile, pour des raisons de sécurité — vérifiez dans les paramètres Wi-Fi de votre téléphone.",
+    cpuUnavailable: "Les statistiques CPU et mémoire ne sont pas accessibles aux pages web sur téléphone. Je peux encore vérifier la batterie.",
+    volumeUnavailable: "Le contrôle du volume n'est pas possible depuis un navigateur mobile, pour des raisons de sécurité.",
+    powerUnavailable: "Les contrôles d'alimentation comme éteindre, redémarrer, verrouiller ou mettre en veille ne sont pas possibles depuis un navigateur mobile, pour des raisons de sécurité.",
+    whichWebsite: "Quel site voulez-vous que j'ouvre ?",
+    openingSite: (s) => `Ouverture de ${s}.`,
+    openingApp: (a) => `Ouverture de ${a}.`,
+    appNotLaunchable: (a) => `Un navigateur ne peut pas lancer ${a} directement sur un téléphone pour des raisons de sécurité. Ouvrez-le depuis l'écran d'accueil.`,
+    appFallback: (a) => `Je ne connais pas ${a} comme application. J'essaie de l'ouvrir comme un site web.`,
+    searchWhat: "Que dois-je rechercher ?",
+    searching: (q) => `Recherche de ${q}.`,
+    dateIs: (d) => `Nous sommes le ${d}.`,
+    timeIs: (t) => `Il est ${t}.`,
+    batteryStatus: (pct, state) => `La batterie est à ${pct} pour cent, ${state}.`,
+    batteryCharging: "en charge",
+    batteryOnBattery: "sur batterie",
+    batteryUnavailable: "Ce navigateur ne partagera pas l'état de la batterie avec une page web. Vérifiez la barre d'état ou les paramètres de votre téléphone.",
+    notUnderstood: "Je n'ai pas compris. Tapez 'commands' ou appuyez sur le bouton Commands ci-dessous pour voir ce que je peux faire.",
+    commandError: "Un problème est survenu avec cette commande.",
+    settingsSaved: "Paramètres enregistrés.",
+    memoryReset: "Mémoire réinitialisée.",
+  },
+  "es-ES": {
+    ready: (n) => `${n} móvil listo. Toca ▶ para escuchar, o escribe un comando abajo.`,
+    noSpeechSupport: "El reconocimiento de voz no es compatible con este navegador (común en iPhone). Los comandos escritos funcionan perfectamente.",
+    yes: "¿Sí?",
+    goodbye: "Adiós.",
+    micDenied: "Permiso de micrófono denegado o bloqueado. Escribe comandos en su lugar, o permite el acceso al micrófono en la configuración del sitio.",
+    nameSaved: (n) => `Vale, recordaré que tu nombre es ${n}.`,
+    nameRecall: (n) => `Tu nombre es ${n}.`,
+    nameUnknown: "Todavía no sé tu nombre. Puedes decirme: my name is Ali.",
+    factSaved: (k, v) => `Vale, recordaré que ${k} es ${v}.`,
+    factRecall: (k, v) => `${k} es ${v}.`,
+    scheduleUnavailable: "Programar anuncios necesita la versión de escritorio con acceso a Meta Ads Manager — no disponible en móvil.",
+    weatherNotSetup: "El clima aún no está configurado. Añade una clave de API gratuita de OpenWeatherMap en Ajustes.",
+    weatherError: (city, msg) => `No pude obtener el clima de ${city}. ${msg}`,
+    weatherResult: (temp, city, feels, desc) => `Hace ${temp} grados en ${city}, sensación de ${feels}, con ${desc}.`,
+    weatherNetErr: "No pude conectar con el servicio del clima. Revisa tu conexión a internet.",
+    whatsappUsage: "Dilo así: message Ali tell him I'm on my way.",
+    contactNotFound: "No tengo ese contacto guardado. Añade su nombre y número en Ajustes primero.",
+    openingWhatsapp: (n) => `Abriendo WhatsApp para ${n}.`,
+    closingApps: "Cerrar otras apps no está permitido para una página web en un teléfono, por seguridad.",
+    screenshotUnavailable: "Un navegador no puede tomar una captura de pantalla en un teléfono. Usa el atajo de tu teléfono (encendido + bajar volumen).",
+    wifiUnavailable: "Leer una contraseña de Wi-Fi guardada no es posible desde un navegador móvil, por seguridad — revísalo en los ajustes de Wi-Fi de tu teléfono.",
+    cpuUnavailable: "Las estadísticas de CPU y memoria no están disponibles para páginas web en teléfonos. Aún puedo revisar la batería.",
+    volumeUnavailable: "El control de volumen no es posible desde un navegador móvil, por seguridad.",
+    powerUnavailable: "Controles de energía como apagar, reiniciar, bloquear o suspender no son posibles desde un navegador móvil, por seguridad.",
+    whichWebsite: "¿Qué sitio web abro?",
+    openingSite: (s) => `Abriendo ${s}.`,
+    openingApp: (a) => `Abriendo ${a}.`,
+    appNotLaunchable: (a) => `Un navegador no puede abrir ${a} directamente en un teléfono por seguridad. Ábrelo desde la pantalla de inicio.`,
+    appFallback: (a) => `No tengo ${a} como app conocida. Intentando abrirlo como sitio web.`,
+    searchWhat: "¿Qué busco?",
+    searching: (q) => `Buscando ${q}.`,
+    dateIs: (d) => `Hoy es ${d}.`,
+    timeIs: (t) => `Son las ${t}.`,
+    batteryStatus: (pct, state) => `La batería está al ${pct} por ciento, ${state}.`,
+    batteryCharging: "cargando",
+    batteryOnBattery: "con batería",
+    batteryUnavailable: "Este navegador no compartirá el estado de la batería con una página web. Revisa la barra de estado o Ajustes de tu teléfono.",
+    notUnderstood: "No entendí eso. Escribe 'commands' o toca el botón Commands abajo para ver qué puedo hacer.",
+    commandError: "Algo salió mal con ese comando.",
+    settingsSaved: "Ajustes guardados.",
+    memoryReset: "Memoria reiniciada.",
+  },
+};
+
+function t(key, ...args) {
+  const dict = TRANSLATIONS[config.language] || TRANSLATIONS["en-US"];
+  const entry = dict[key] !== undefined ? dict[key] : TRANSLATIONS["en-US"][key];
+  return typeof entry === "function" ? entry(...args) : entry;
+}
+
+// ---------- DOM ----------
+const $ = (id) => document.getElementById(id);
+const logEl = $("log"), radarEl = $("radar"), statusEl = $("statusText"), micBtn = $("micBtn");
+const listenToggle = $("listenToggle"), clockEl = $("clock");
+
+function setStatus(state) {
+  radarEl.className = "radar state-" + state;
+  statusEl.textContent = state.toUpperCase();
+  micBtn.classList.toggle("active", state === "listening");
+}
+
+function addBubble(text, who) {
+  const b = document.createElement("div");
+  b.className = "bubble " + who;
+  if (who !== "sys") {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = who === "you" ? "YOU" : config.assistant_name.toUpperCase();
+    b.appendChild(tag);
+  }
+  const body = document.createElement("div");
+  body.textContent = text;
+  b.appendChild(body);
+  logEl.appendChild(b);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function tickClock() {
+  clockEl.textContent = new Date().toLocaleString(undefined, {
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit"
+  });
+}
+setInterval(tickClock, 1000); tickClock();
+
+// ---------- speech output ----------
+function speak(text) {
+  addBubble(text, "jarvis");
+  if (!("speechSynthesis" in window)) return;
+  setStatus("speaking");
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = config.language;
+  u.rate = 1.0;
+  u.onend = () => setStatus(recognizing ? "listening" : "idle");
+  window.speechSynthesis.speak(u);
+}
+
+// ---------- speech input ----------
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let recognizing = false;
+let manualStop = false;
+
+function buildRecognition() {
+  if (!SpeechRecognitionCtor) return null;
+  const r = new SpeechRecognitionCtor();
+  r.continuous = true;
+  r.interimResults = false;
+  r.lang = config.language;
+
+  r.onresult = (e) => {
+    const result = e.results[e.results.length - 1];
+    const text = result[0].transcript.trim();
+    if (!text) return;
+    handleHeardText(text);
+  };
+  r.onerror = (e) => {
+    console.warn("speech error", e.error);
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      addBubble(t("micDenied"), "sys");
+      stopListening();
+    }
+    // 'no-speech' / 'network' just get restarted below via onend
+  };
+  r.onend = () => {
+    if (recognizing && !manualStop) {
+      try { r.start(); } catch (e) {}
+    } else {
+      setStatus("idle");
+    }
+  };
+  return r;
+}
+
+function handleHeardText(rawText) {
+  const text = rawText.toLowerCase();
+  addBubble(rawText, "you");
+
+  if (config.wake_word_enabled) {
+    const ww = config.wake_word.toLowerCase();
+    if (!text.includes(ww)) return; // ignored — no wake word heard
+    const remainder = text.split(ww).slice(1).join(ww).trim();
+    if (remainder) {
+      runCommand(remainder);
+    } else {
+      speak(t("yes"));
+    }
+  } else {
+    runCommand(text);
+  }
+}
+
+function startListening() {
+  if (!SpeechRecognitionCtor) {
+    addBubble("This browser doesn't support voice recognition (common on iPhone/Safari). Use the text box below instead — everything still works by typing.", "sys");
+    return;
+  }
+  recognition = buildRecognition();
+  manualStop = false;
+  recognizing = true;
+  try { recognition.start(); } catch (e) {}
+  setStatus("listening");
+  listenToggle.textContent = "■ STOP LISTENING";
+  listenToggle.classList.add("on");
+  listenToggle.classList.remove("primary");
+}
+
+function stopListening() {
+  manualStop = true;
+  recognizing = false;
+  if (recognition) { try { recognition.stop(); } catch (e) {} }
+  setStatus("idle");
+  listenToggle.textContent = "▶ START LISTENING";
+  listenToggle.classList.remove("on");
+  listenToggle.classList.add("primary");
+}
+
+listenToggle.addEventListener("click", () => recognizing ? stopListening() : startListening());
+micBtn.addEventListener("click", () => recognizing ? stopListening() : startListening());
+
+// ---------- typed command fallback ----------
+$("sendBtn").addEventListener("click", submitTyped);
+$("typeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") submitTyped(); });
+function submitTyped() {
+  const input = $("typeInput");
+  const text = input.value.trim();
+  if (!text) return;
+  addBubble(text, "you");
+  input.value = "";
+  runCommand(text.toLowerCase());
+}
+document.querySelectorAll(".chip").forEach(chip => {
+  chip.addEventListener("click", () => { addBubble(chip.dataset.cmd, "you"); runCommand(chip.dataset.cmd); });
+});
+
+// ---------- memory helpers ----------
+function saveMemory() { saveJSON(LS_MEMORY, memory); renderMemoryPreview(); }
+function saveContacts() { saveJSON(LS_CONTACTS, contacts); }
+function saveConfig() { saveJSON(LS_CONFIG, config); }
+
+// Opens an external link (WhatsApp, a website, a web-app, a search).
+// Voice commands fire window.open() from an async speech-recognition
+// callback, which mobile browsers often don't treat as a "real" user
+// gesture — so the popup gets silently blocked and nothing happens,
+// even though everything up to this point worked correctly. If that
+// happens, fall back to navigating the current tab directly instead,
+// which mobile browsers do allow and which also matches how a wa.me
+// link is meant to behave anyway (it hands off straight to the app).
+function openExternal(url) {
+  let win = null;
+  try { win = window.open(url, "_blank"); } catch (e) { win = null; }
+  if (!win || win.closed || typeof win.closed === "undefined") {
+    window.location.href = url;
+  }
+}
+
+// ---------- command router (ported from assistant.py handle_command) ----------
+// Name / fact patterns cover English, Roman Urdu, Urdu script, Hindi, Arabic,
+// French and Spanish — so "my name is Ali", "mera naam Ali hai", "میرا نام علی ہے",
+// "मेरा नाम अली है", "اسمي علي", "je m'appelle Ali" and "me llamo Ali" all work,
+// no matter which language is selected in Settings.
+const NAME_PATTERNS = [
+  /(?:remember,?\s*)?my name is (.+)/i,
+  /tumhara naam (.+) hai/i,
+  /tumhara nam (.+) hai/i,
+  /mera naam (.+) hai/i,
+  /میرا نام (.+) ہے/,
+  /تمہارا نام (.+) ہے/,
+  /मेरा नाम (.+) है/,
+  /तुम्हारा नाम (.+) है/,
+  /اسمي (.+)/,
+  /je m'appelle (.+)/i,
+  /mon nom est (.+)/i,
+  /me llamo (.+)/i,
+  /mi nombre es (.+)/i,
+  /(?:you can )?call me (.+)/i,
+  /mujhe (.+) kehte hain/i,
+  /mujhe (.+) keh saktay hain/i,
+];
+const NAME_RECALL_TRIGGERS = [
+  "what is my name", "what's my name", "who am i",
+  "mera naam kya hai", "میرا نام کیا ہے",
+  "मेरा नाम क्या है", "मैं कौन हूं",
+  "ما اسمي", "من أنا",
+  "comment je m'appelle", "quel est mon nom",
+  "cómo me llamo", "cual es mi nombre",
+];
+const GENERAL_REMEMBER_RE = /(?:remember|yaad rakho|yaad rakhna)(?: that| ke)? (.+?) (?:is|hai) (.+)/i;
+// Supports both Roman Urdu ("X kya hai") and English ("what is X" / "what's X").
+const GENERAL_RECALL_PATTERNS = [
+  /(.+?) kya (?:hai|tha)\??$/i,
+  /^what(?:'s| is) (?:the |my )?(.+?)\??$/i,
+];
+
+function tryRememberName(command) {
+  for (const re of NAME_PATTERNS) {
+    const m = command.match(re);
+    if (m) {
+      const name = m[1].trim().replace(/[.؟?]+$/, "");
+      memory.user_name = name;
+      saveMemory();
+      speak(t("nameSaved", name));
+      return true;
+    }
+  }
+  return false;
+}
+function tryRecallName(command) {
+  if (NAME_RECALL_TRIGGERS.some(trig => command.includes(trig))) {
+    if (memory.user_name) speak(t("nameRecall", memory.user_name));
+    else speak(t("nameUnknown"));
+    return true;
+  }
+  return false;
+}
+function tryRememberFact(command) {
+  const m = command.match(GENERAL_REMEMBER_RE);
+  if (m) {
+    const key = m[1].trim().toLowerCase();
+    const value = m[2].trim().replace(/[.؟?]+$/, "");
+    memory.facts = memory.facts || {};
+    memory.facts[key] = value;
+    saveMemory();
+    speak(t("factSaved", key, value));
+    return true;
+  }
+  return false;
+}
+function tryRecallFact(command) {
+  for (const re of GENERAL_RECALL_PATTERNS) {
+    const m = command.match(re);
+    if (m) {
+      const key = m[1].trim().toLowerCase();
+      const value = (memory.facts || {})[key];
+      if (value) { speak(t("factRecall", key, value)); return true; }
+      // no matching fact for this phrasing — try the next pattern / fall
+      // through to the normal router rather than giving up immediately.
+    }
+  }
+  return false;
+}
+
+async function checkWeather(command) {
+  const apiKey = config.weather_api_key;
+  if (!apiKey) { speak(t("weatherNotSetup")); return; }
+  let city = config.default_city || "Lahore";
+  for (const splitter of [" in ", " for "]) {
+    if (command.includes(splitter)) {
+      city = command.split(splitter).slice(1).join(splitter).trim().replace(/[?.! ]+$/, "");
+      break;
+    }
+  }
+  if (!city) city = config.default_city || "Lahore";
+  const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${encodeURIComponent(apiKey)}&units=metric`;
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (resp.status !== 200) { speak(t("weatherError", city, data.message || "Please check the city name.")); return; }
+    const temp = data.main.temp, feels = data.main.feels_like, desc = data.weather[0].description;
+    speak(t("weatherResult", temp, city, feels, desc));
+  } catch (e) {
+    speak(t("weatherNetErr"));
+  }
+}
+
+// Casual connector/filler words people naturally use around a WhatsApp
+// request (Roman Urdu + English). These get stripped out so the leftover
+// text is just the actual message, regardless of how the sentence was built.
+const WHATSAPP_FILLER_WORDS = [
+  "send", "bhejo", "bhej do", "bhej dena", "karo", "kar do", "kar dena",
+  "bolo", "bol do", "bol dena", "keh do", "keh dena", "kehna", "kaho",
+  "bata do", "bata dena", "batao", "inform",
+  "ko", "se", "par", "to", "that", "tell him", "tell her", "tell them",
+  "a", "the", "message", "whatsapp", "text", "please", "plz"
+];
+
+// Natural-language cues that someone wants a message sent — doesn't have to
+// be the literal word "message" or "whatsapp". Any one of these, combined
+// with a saved contact's name showing up anywhere in the sentence, is
+// enough to route to WhatsApp (e.g. "Ali ko bol do main araha hn").
+const SEND_MESSAGE_TRIGGER_WORDS = [
+  "message", "whatsapp", "text", "send", "bhejo", "bhej do", "bhej dena",
+  "bolo", "bol do", "bol dena", "keh do", "keh dena", "kehna", "kaho",
+  "bata do", "bata dena", "batao", "tell him", "tell her", "tell them", "inform"
+];
+
+function sendWhatsApp(command) {
+  // Step 1: find which saved contact is mentioned anywhere in the sentence
+  // (not just right after "whatsapp"/"message" — could be at the start,
+  // middle, or end depending on how the person phrased it).
+  let matchedName = null;
+  let matchedAt = -1;
+  for (const name of Object.keys(contacts)) {
+    const idx = command.indexOf(name.toLowerCase());
+    if (idx !== -1 && (matchedName === null || name.length > matchedName.length)) {
+      matchedName = name;
+      matchedAt = idx;
+    }
+  }
+
+  // If there's no "whatsapp"/"message"/send-style cue at all AND no contact
+  // found, this isn't a WhatsApp command we can make sense of.
+  if (!matchedName) {
+    speak(SEND_MESSAGE_TRIGGER_WORDS.some(w => command.includes(w)) ? t("contactNotFound") : t("whatsappUsage"));
+    return;
+  }
+
+  // Step 2: strip the contact's name out, then strip trigger/filler words,
+  // whatever is left over is the actual message.
+  let text = command.slice(0, matchedAt) + " " + command.slice(matchedAt + matchedName.length);
+  const fillerPattern = new RegExp(
+    "\\b(" + WHATSAPP_FILLER_WORDS.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")\\b",
+    "g"
+  );
+  text = text.replace(fillerPattern, " ").replace(/\s+/g, " ").trim();
+
+  const phone = contacts[matchedName].replace(/[^\d+]/g, "").replace(/^\+/, "");
+  const url = `https://wa.me/${phone}${text ? "?text=" + encodeURIComponent(text) : ""}`;
+  speak(t("openingWhatsapp", matchedName));
+  openExternal(url);
+}
+
+function tellTimeOrDate(command) {
+  const now = new Date();
+  if (DATE_WORDS.some(w => command.includes(w))) {
+    speak(t("dateIs", now.toLocaleDateString(config.language, { weekday: "long", month: "long", day: "numeric", year: "numeric" })));
+  } else {
+    speak(t("timeIs", now.toLocaleTimeString(config.language, { hour: "2-digit", minute: "2-digit" })));
+  }
+}
+
+function openWebsite(command) {
+  let text = command;
+  for (const trigger of ["open website ", "go to "]) {
+    if (text.includes(trigger)) { text = text.split(trigger).slice(1).join(trigger).trim(); break; }
+  }
+  if (!text) { speak(t("whichWebsite")); return; }
+  const url = text.startsWith("http") ? text : (text.includes(".") ? `https://${text.replace(/ /g, "")}` : `https://www.${text.replace(/ /g, "")}.com`);
+  speak(t("openingSite", text));
+  openExternal(url);
+}
+
+// Apps that genuinely have a mobile web equivalent a browser can open.
+// Native app-launching (like the Windows version does) isn't something a
+// web page is allowed to do on a phone — this is the honest, working subset.
+const WEB_APP_MAP = {
+  "whatsapp": "https://web.whatsapp.com",
+  "youtube": "https://youtube.com",
+  "gmail": "https://mail.google.com",
+  "email": "https://mail.google.com",
+  "maps": "https://maps.google.com",
+  "google maps": "https://maps.google.com",
+  "instagram": "https://instagram.com",
+  "facebook": "https://facebook.com",
+  "twitter": "https://twitter.com",
+  "x": "https://x.com",
+  "spotify": "https://open.spotify.com",
+  "drive": "https://drive.google.com",
+  "calendar": "https://calendar.google.com",
+};
+// Natural ways of saying "open" — not just the literal word.
+const OPEN_TRIGGER_WORDS = ["open", "launch", "start", "kholo", "khol do", "khol dena"];
+const IMPOSSIBLE_ON_PHONE_APPS = ["calculator", "calc", "camera", "settings", "notepad", "file explorer", "task manager", "control panel", "command prompt", "paint", "phone", "dialer"];
+
+// Word-boundary match instead of plain substring — otherwise short names
+// like "x" match inside unrelated words (e.g. "example" contains "x", so
+// "open example.com" would incorrectly trigger the Twitter/X app), and
+// "calc" would match "calculate", etc.
+function wordMatch(command, word) {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp("\\b" + escaped + "\\b", "i").test(command);
+}
+
+function openApp(command) {
+  let text = command;
+  for (const w of OPEN_TRIGGER_WORDS) text = text.replace(new RegExp("\\b" + w + "\\b", "i"), "");
+  text = text.trim();
+  if (!text) return false;
+  for (const [name, url] of Object.entries(WEB_APP_MAP)) {
+    if (wordMatch(command, name)) { speak(t("openingApp", name)); openExternal(url); return true; }
+  }
+  for (const name of IMPOSSIBLE_ON_PHONE_APPS) {
+    if (wordMatch(command, name)) {
+      speak(t("appNotLaunchable", name));
+      return true;
+    }
+  }
+  // generic fallback: try it as a website
+  speak(t("appFallback", text));
+  openExternal(text.includes(".") ? `https://${text.replace(/ /g, "")}` : `https://www.${text.replace(/ /g, "")}.com`);
+  return true;
+}
+
+// Search trigger words across languages (Roman/English keywords always understood too).
+const SEARCH_WORDS = ["search", "google", "look up", "lookup", "find out", "khoj", "khojo", "talash", "खोजो", "खोजें", "ابحث", "بحث", "recherche", "buscar", "busca"];
+function webSearch(command) {
+  let query = command;
+  for (const w of SEARCH_WORDS) query = query.replace(w, "");
+  query = query.trim();
+  if (!query) { speak(t("searchWhat")); return; }
+  speak(t("searching", query));
+  openExternal(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
+}
+
+async function batteryStatus() {
+  if (!("getBattery" in navigator)) {
+    speak(t("batteryUnavailable"));
+    return;
+  }
+  try {
+    const battery = await navigator.getBattery();
+    const state = battery.charging ? t("batteryCharging") : t("batteryOnBattery");
+    speak(t("batteryStatus", Math.round(battery.level * 100), state));
+  } catch (e) {
+    speak(t("batteryUnavailable"));
+  }
+}
+
+// Multi-language keyword groups so the same intents route correctly no
+// matter which language the person is speaking/typing in.
+const EXIT_WORDS = ["exit", "quit", "goodbye", "stop listening", "band karo", "alvida", "बंद करो", "अलविदा", "توقف", "مع السلامة", "arrête", "au revoir", "para", "adiós"];
+const WEATHER_WORDS = ["weather", "mausam", "मौसम", "الطقس", "météo", "meteo", "clima", "tiempo"];
+const TIME_WORDS = ["time", "waqt", "समय", "वक़्त", "الوقت", "l'heure", "heure", "hora"];
+const DATE_WORDS = ["date", "tareekh", "तारीख", "التاريخ", "la date", "la fecha", "fecha"];
+const BATTERY_WORDS = ["battery", "बैटरी", "البطارية", "batterie", "batería", "bateria"];
+const CPU_WORDS = ["cpu", "memory usage", "ram"];
+const VOLUME_WORDS = ["volume", "mute", "आवाज़", "الصوت", "volume sonore", "volumen"];
+const POWER_WORDS = ["shut down", "shutdown", "restart", "reboot", "lock the screen", "sleep", "cancel shutdown", "cancel restart", "बंद करो कंप्यूटर", "أوقف", "إعادة تشغيل", "éteindre", "redémarrer", "apagar", "reiniciar"];
+const WIFI_WORDS = ["wifi password", "wi-fi password", "wifi ka password", "वाई-फाई पासवर्ड", "كلمة مرور", "mot de passe wifi", "contraseña wifi"];
+const SCREENSHOT_WORDS = ["screenshot", "स्क्रीनशॉट", "لقطة شاشة", "capture d'écran", "captura de pantalla"];
+
+function runCommand(rawCommand) {
+  const command = rawCommand.toLowerCase().trim();
+  if (!command) return true;
+  setStatus("thinking");
+
+  const finish = () => setTimeout(() => setStatus(recognizing ? "listening" : "idle"), 200);
+
+  if (EXIT_WORDS.some(w => command === w || command.includes(w))) {
+    speak(t("goodbye"));
+    stopListening();
+    return false;
+  }
+
+  try {
+    if (tryRememberName(command)) { }
+    else if (tryRecallName(command)) { }
+    else if (tryRememberFact(command)) { }
+    else if (tryRecallFact(command)) { }
+    else if (command.startsWith("schedule ")) {
+      speak(t("scheduleUnavailable"));
+    }
+    else if (WEATHER_WORDS.some(w => command.includes(w))) { checkWeather(command); }
+    else if (!command.startsWith("open ") && (
+      command.startsWith("message ") ||
+      command.includes("whatsapp") ||
+      // natural phrasing: a saved contact's name + a send-style word,
+      // anywhere in the sentence, in any order — e.g. "Ali ko bol do..."
+      (SEND_MESSAGE_TRIGGER_WORDS.some(w => command.includes(w)) &&
+       Object.keys(contacts).some(name => command.includes(name.toLowerCase())))
+    )) { sendWhatsApp(command); }
+    else if (command.startsWith("close ") || command.startsWith("quit ")) {
+      speak(t("closingApps"));
+    }
+    else if (SCREENSHOT_WORDS.some(w => command.includes(w))) {
+      speak(t("screenshotUnavailable"));
+    }
+    else if (WIFI_WORDS.some(w => command.includes(w))) {
+      speak(t("wifiUnavailable"));
+    }
+    else if (BATTERY_WORDS.some(w => command.includes(w)) || CPU_WORDS.some(w => command.includes(w)) || command.includes("system status")) {
+      if (CPU_WORDS.some(w => command.includes(w))) {
+        speak(t("cpuUnavailable"));
+      } else {
+        batteryStatus();
+      }
+    }
+    else if (VOLUME_WORDS.some(w => command.includes(w))) {
+      speak(t("volumeUnavailable"));
+    }
+    else if (POWER_WORDS.some(w => command.includes(w))) {
+      speak(t("powerUnavailable"));
+    }
+    else if (command.startsWith("open website ") || command.startsWith("go to ")) { openWebsite(command); }
+    else if (OPEN_TRIGGER_WORDS.some(w => wordMatch(command, w)) && openApp(command)) { }
+    else if (TIME_WORDS.some(w => command.includes(w)) || DATE_WORDS.some(w => command.includes(w))) { tellTimeOrDate(command); }
+    else if (SEARCH_WORDS.some(w => command.includes(w))) { webSearch(command); }
+    else {
+      speak(t("notUnderstood"));
+    }
+  } catch (e) {
+    console.error(e);
+    speak(t("commandError"));
+  }
+  finish();
+  return true;
+}
+
+// ---------- settings modal ----------
+const settingsOverlay = $("settingsOverlay");
+$("settingsBtn").addEventListener("click", openSettings);
+$("settingsCancel").addEventListener("click", () => settingsOverlay.classList.remove("open"));
+$("settingsSave").addEventListener("click", saveSettings);
+
+function openSettings() {
+  $("cfgName").value = config.assistant_name;
+  $("cfgLang").value = config.language;
+  $("cfgWakeEnabled").checked = config.wake_word_enabled;
+  $("cfgWakeWord").value = config.wake_word;
+  $("cfgWeatherKey").value = config.weather_api_key;
+  $("cfgCity").value = config.default_city;
+  renderContacts();
+  renderMemoryPreview();
+  settingsOverlay.classList.add("open");
+}
+function renderMemoryPreview() {
+  const facts = Object.keys(memory.facts || {}).length;
+  $("memoryPreview").textContent = `Name: ${memory.user_name || "(not set)"} · ${facts} saved fact(s)`;
+}
+function renderContacts() {
+  const list = $("contactsList");
+  list.innerHTML = "";
+  Object.entries(contacts).forEach(([name, phone]) => addContactRow(name, phone));
+}
+function addContactRow(name = "", phone = "") {
+  const row = document.createElement("div");
+  row.className = "contact-row";
+  row.innerHTML = `<input class="c-name" placeholder="Name" value="${name.replace(/"/g, "&quot;")}">
+                    <input class="c-phone" placeholder="+92xxxxxxxxxx" value="${phone.replace(/"/g, "&quot;")}">
+                    <button class="remove-x" type="button">✕</button>`;
+  row.querySelector(".remove-x").addEventListener("click", () => row.remove());
+  $("contactsList").appendChild(row);
+}
+$("addContactBtn").addEventListener("click", () => addContactRow());
+$("resetMemoryBtn").addEventListener("click", () => {
+  memory = { user_name: null, facts: {} };
+  saveMemory();
+  addBubble(t("memoryReset"), "sys");
+});
+
+function saveSettings() {
+  config.assistant_name = $("cfgName").value.trim() || "Jarvis";
+  config.language = $("cfgLang").value;
+  config.wake_word_enabled = $("cfgWakeEnabled").checked;
+  config.wake_word = $("cfgWakeWord").value.trim().toLowerCase() || "jarvis";
+  config.weather_api_key = $("cfgWeatherKey").value.trim();
+  config.default_city = $("cfgCity").value.trim() || "Lahore";
+  saveConfig();
+
+  const newContacts = {};
+  document.querySelectorAll("#contactsList .contact-row").forEach(row => {
+    const n = row.querySelector(".c-name").value.trim();
+    const p = row.querySelector(".c-phone").value.trim();
+    if (n && p) newContacts[n] = p;
+  });
+  contacts = newContacts;
+  saveContacts();
+
+  $("brandName").textContent = config.assistant_name.toUpperCase();
+  settingsOverlay.classList.remove("open");
+  addBubble(t("settingsSaved"), "sys");
+
+  // restart recognition with new language if currently listening
+  if (recognizing) { stopListening(); startListening(); }
+}
+
+// ---------- commands modal ----------
+const COMMAND_INFO = [
+  { cmd: "what's the time / what's the date", ok: true },
+  { cmd: "weather / weather in <city>", ok: true },
+  { cmd: "message <contact> <text> / whatsapp <contact> <text>", ok: true },
+  { cmd: "search <query> / google <query>", ok: true },
+  { cmd: "open website <site> / go to <site>", ok: true },
+  { cmd: "open whatsapp / youtube / gmail / maps / instagram / facebook / spotify", ok: true },
+  { cmd: "my name is <name> / mera naam <naam> hai", ok: true },
+  { cmd: "what is my name / mera naam kya hai", ok: true },
+  { cmd: "remember <thing> is <value> / yaad rakho <cheez> hai", ok: true },
+  { cmd: "<thing> kya hai", ok: true },
+  { cmd: "battery status", ok: true },
+  { cmd: "jarvis (wake word) / exit / goodbye", ok: true },
+  { cmd: "11 languages in Settings — replies, voice, and command recognition are translated for English, Urdu, Hindi, Arabic, French, Spanish", ok: true },
+  { cmd: "open calculator / notepad / file explorer / camera / settings", ok: false, note: "Not possible from a phone browser (OS security). Open from your home screen instead." },
+  { cmd: "close <app>", ok: false, note: "Browsers can't close other apps on a phone." },
+  { cmd: "volume up / down / mute", ok: false, note: "No web API for phone volume control." },
+  { cmd: "shutdown / restart / lock / sleep", ok: false, note: "Power controls aren't exposed to web pages." },
+  { cmd: "wifi password", ok: false, note: "Browsers can't read saved Wi-Fi passwords — check phone Wi-Fi settings." },
+  { cmd: "take a screenshot", ok: false, note: "Use your phone's own screenshot shortcut (power + volume down)." },
+  { cmd: "cpu / ram status", ok: false, note: "Not exposed to web pages on phones." },
+  { cmd: "schedule <ad> ...", ok: false, note: "Desktop-only feature (needs Meta Ads Manager access)." },
+];
+function renderCommandsList() {
+  const ul = $("cmdList");
+  ul.innerHTML = "";
+  COMMAND_INFO.forEach(c => {
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${c.cmd}</b>` + (c.ok ? "" : `<span class="na">✕ Not available on phone — ${c.note}</span>`);
+    ul.appendChild(li);
+  });
+}
+$("commandsBtn").addEventListener("click", () => { renderCommandsList(); $("commandsOverlay").classList.add("open"); });
+$("commandsClose").addEventListener("click", () => $("commandsOverlay").classList.remove("open"));
+
+// ---------- init ----------
+$("brandName").textContent = config.assistant_name.toUpperCase();
+addBubble(t("ready", config.assistant_name), "sys");
+if (!SpeechRecognitionCtor) {
+  addBubble(t("noSpeechSupport"), "sys");
+}
+
+// register service worker for installability (best-effort, ignored on file://)
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Once you paste real keys into these, git will stop tracking further changes to them
+# (they're committed once now as safe empty templates).
+desktop/config.json
+desktop/memory.json
+desktop/schedule.json
+desktop/screenshots/
+desktop/dist/
+desktop/build/
+desktop/__pycache__/
+desktop/*.spec
