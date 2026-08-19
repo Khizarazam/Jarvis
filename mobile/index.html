@@ -299,6 +299,21 @@
     </div>
 
     <div class="field">
+      <label>AI Assistant (Claude API — makes Jarvis understand anything, not just fixed commands)</label>
+      <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:4px;">
+        <input id="cfgAiEnabled" type="checkbox" style="width:auto;" /> Enable AI fallback
+      </label>
+      <input id="cfgAiKey" type="password" placeholder="Claude API key (sk-ant-...)" style="margin-top:6px;" />
+      <select id="cfgAiModel" style="margin-top:6px;">
+        <option value="claude-haiku-4-5-20251001">Haiku 4.5 — fast &amp; cheap</option>
+        <option value="claude-sonnet-5">Sonnet 5 — smarter, slightly slower</option>
+      </select>
+      <div class="note" style="margin-top:6px;">
+        Get a key at <b>console.anthropic.com</b> → API Keys → Create Key. Your key is stored only on this device (never sent anywhere but Anthropic's API) and is used whenever a command doesn't match a built-in one.
+      </div>
+    </div>
+
+    <div class="field">
       <label>Memory</label>
       <div class="note" id="memoryPreview">—</div>
       <button class="btn danger" id="resetMemoryBtn" type="button" style="margin-top:8px;">Reset memory</button>
@@ -339,7 +354,10 @@ const DEFAULT_CONFIG = {
   weather_api_key: "",
   default_city: "Lahore",
   wake_word: "jarvis",
-  wake_word_enabled: true
+  wake_word_enabled: true,
+  ai_enabled: false,
+  ai_api_key: "",
+  ai_model: "claude-haiku-4-5-20251001"
 };
 
 function loadJSON(key, fallback) {
@@ -401,6 +419,11 @@ const TRANSLATIONS = {
     batteryOnBattery: "on battery",
     batteryUnavailable: "This browser won't share battery info with a web page. Check your phone's status bar or Settings app instead.",
     notUnderstood: "I didn't understand that. Type 'commands' or tap the Commands button below to see what I can do.",
+    aiAuthError: "That Claude API key isn't valid. Check it in Settings.",
+    aiRateLimit: "Claude's API is rate-limited or out of credit right now. Try again in a bit.",
+    aiGenericError: "Sorry, I couldn't reach the AI right now.",
+    aiEmptyReply: "Sorry, I don't have anything to say to that.",
+    aiNetErr: "I couldn't connect to the AI service. Check your internet connection.",
     commandError: "Something went wrong with that command.",
     settingsSaved: "Settings saved.",
     memoryReset: "Memory reset.",
@@ -444,6 +467,11 @@ const TRANSLATIONS = {
     batteryOnBattery: "battery pe hai",
     batteryUnavailable: "Ye browser battery info web page ke saath share nahi karega. Phone ki status bar ya Settings app check karein.",
     notUnderstood: "Samajh nahi aaya. 'commands' type karein ya neeche Commands button dabayein taake pata chale main kya kar sakta hoon.",
+    aiAuthError: "Ye Claude API key sahi nahi hai. Settings mein check karein.",
+    aiRateLimit: "Claude ki API abhi rate-limited hai ya credit khatam hai. Thori dair baad try karein.",
+    aiGenericError: "Maaf kijiye, abhi AI tak nahi pohnch saka.",
+    aiEmptyReply: "Maaf kijiye, iska koi jawab mere paas nahi hai.",
+    aiNetErr: "AI service se connect nahi ho saka. Internet connection check karein.",
     commandError: "Us command mein kuch ghalat ho gaya.",
     settingsSaved: "Settings save ho gayin.",
     memoryReset: "Memory reset ho gayi.",
@@ -487,6 +515,11 @@ const TRANSLATIONS = {
     batteryOnBattery: "बैटरी पर है",
     batteryUnavailable: "यह ब्राउज़र बैटरी जानकारी वेब पेज के साथ साझा नहीं करेगा। फ़ोन की स्टेटस बार या Settings ऐप देखें।",
     notUnderstood: "समझ नहीं आया। 'commands' टाइप करें या नीचे Commands बटन दबाएं।",
+    aiAuthError: "यह Claude API key सही नहीं है। Settings में जांचें।",
+    aiRateLimit: "Claude की API अभी rate-limited है या क्रेडिट खत्म है। थोड़ी देर बाद कोशिश करें।",
+    aiGenericError: "माफ करें, अभी AI तक नहीं पहुंच सका।",
+    aiEmptyReply: "माफ करें, इसका कोई जवाब मेरे पास नहीं है।",
+    aiNetErr: "AI सेवा से कनेक्ट नहीं हो सका। इंटरनेट कनेक्शन जांचें।",
     commandError: "उस कमांड में कुछ गड़बड़ हो गई।",
     settingsSaved: "सेटिंग्स सेव हो गईं।",
     memoryReset: "मेमोरी रीसेट हो गई।",
@@ -530,6 +563,11 @@ const TRANSLATIONS = {
     batteryOnBattery: "على البطارية",
     batteryUnavailable: "هذا المتصفح لن يشارك معلومات البطارية مع صفحة ويب. تحقق من شريط الحالة أو تطبيق الإعدادات في هاتفك.",
     notUnderstood: "لم أفهم ذلك. اكتب 'commands' أو اضغط زر Commands أدناه لرؤية ما يمكنني فعله.",
+    aiAuthError: "مفتاح Claude API هذا غير صالح. تحقق منه في الإعدادات.",
+    aiRateLimit: "واجهة Claude API محدودة الآن أو نفد الرصيد. حاول مرة أخرى بعد قليل.",
+    aiGenericError: "عذرًا، لم أتمكن من الوصول إلى الذكاء الاصطناعي الآن.",
+    aiEmptyReply: "عذرًا، ليس لدي رد على ذلك.",
+    aiNetErr: "تعذر الاتصال بخدمة الذكاء الاصطناعي. تحقق من اتصال الإنترنت.",
     commandError: "حدث خطأ ما مع هذا الأمر.",
     settingsSaved: "تم حفظ الإعدادات.",
     memoryReset: "تمت إعادة تعيين الذاكرة.",
@@ -573,6 +611,11 @@ const TRANSLATIONS = {
     batteryOnBattery: "sur batterie",
     batteryUnavailable: "Ce navigateur ne partagera pas l'état de la batterie avec une page web. Vérifiez la barre d'état ou les paramètres de votre téléphone.",
     notUnderstood: "Je n'ai pas compris. Tapez 'commands' ou appuyez sur le bouton Commands ci-dessous pour voir ce que je peux faire.",
+    aiAuthError: "Cette clé API Claude n'est pas valide. Vérifiez-la dans les paramètres.",
+    aiRateLimit: "L'API de Claude est actuellement limitée ou à court de crédit. Réessayez bientôt.",
+    aiGenericError: "Désolé, je n'ai pas pu joindre l'IA pour le moment.",
+    aiEmptyReply: "Désolé, je n'ai rien à répondre à cela.",
+    aiNetErr: "Impossible de se connecter au service d'IA. Vérifiez votre connexion internet.",
     commandError: "Un problème est survenu avec cette commande.",
     settingsSaved: "Paramètres enregistrés.",
     memoryReset: "Mémoire réinitialisée.",
@@ -616,6 +659,11 @@ const TRANSLATIONS = {
     batteryOnBattery: "con batería",
     batteryUnavailable: "Este navegador no compartirá el estado de la batería con una página web. Revisa la barra de estado o Ajustes de tu teléfono.",
     notUnderstood: "No entendí eso. Escribe 'commands' o toca el botón Commands abajo para ver qué puedo hacer.",
+    aiAuthError: "Esa clave de API de Claude no es válida. Revísala en Ajustes.",
+    aiRateLimit: "La API de Claude está limitada o sin crédito ahora mismo. Intenta de nuevo en un momento.",
+    aiGenericError: "Lo siento, no pude contactar a la IA ahora mismo.",
+    aiEmptyReply: "Lo siento, no tengo nada que responder a eso.",
+    aiNetErr: "No pude conectarme al servicio de IA. Revisa tu conexión a internet.",
     commandError: "Algo salió mal con ese comando.",
     settingsSaved: "Ajustes guardados.",
     memoryReset: "Memoria reiniciada.",
@@ -904,6 +952,72 @@ async function checkWeather(command) {
   }
 }
 
+// ---------- AI fallback (Claude API) ----------
+// Keeps a short rolling history so follow-up questions have context.
+let aiHistory = [];
+const AI_HISTORY_LIMIT = 10; // messages (user+assistant combined)
+
+async function askAI(userText) {
+  if (!config.ai_api_key) {
+    speak(t("notUnderstood"));
+    return;
+  }
+  setStatus("thinking");
+  try {
+    aiHistory.push({ role: "user", content: userText });
+    if (aiHistory.length > AI_HISTORY_LIMIT) aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
+
+    const systemPrompt =
+      `You are ${config.assistant_name}, a concise, friendly voice assistant running inside a mobile app. ` +
+      `The user is speaking ${config.language === "ur" ? "Roman Urdu / Urdu" : config.language}. ` +
+      `Reply naturally in the same language/style the user used (Roman Urdu is fine if that's what they used). ` +
+      `Keep replies short (1-3 sentences) since they are spoken aloud. ` +
+      `You cannot actually control the phone, send messages, or open apps yourself — if asked to DO something on-device, ` +
+      `explain you can only chat/answer, and suggest the built-in command for it if relevant (e.g. "whatsapp <name> <text>", "weather", "time", "open <app>").`;
+
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": config.ai_api_key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: config.ai_model || "claude-haiku-4-5-20251001",
+        max_tokens: 300,
+        system: systemPrompt,
+        messages: aiHistory
+      })
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      console.error("AI error:", data);
+      const msg = (data && data.error && data.error.message) || "";
+      if (resp.status === 401) speak(t("aiAuthError"));
+      else if (resp.status === 429) speak(t("aiRateLimit"));
+      else speak(t("aiGenericError"));
+      aiHistory.pop(); // don't keep a failed turn in history
+      return;
+    }
+
+    const replyText = (data.content || [])
+      .filter(block => block.type === "text")
+      .map(block => block.text)
+      .join(" ")
+      .trim() || t("aiEmptyReply");
+
+    aiHistory.push({ role: "assistant", content: replyText });
+    if (aiHistory.length > AI_HISTORY_LIMIT) aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
+
+    speak(replyText);
+  } catch (e) {
+    console.error(e);
+    speak(t("aiNetErr"));
+  }
+}
+
 // Casual connector/filler words people naturally use around a WhatsApp
 // request (Roman Urdu + English). These get stripped out so the leftover
 // text is just the actual message, regardless of how the sentence was built.
@@ -1097,7 +1211,7 @@ const POWER_WORDS = ["shut down", "shutdown", "restart", "reboot", "lock the scr
 const WIFI_WORDS = ["wifi password", "wi-fi password", "wifi ka password", "वाई-फाई पासवर्ड", "كلمة مرور", "mot de passe wifi", "contraseña wifi"];
 const SCREENSHOT_WORDS = ["screenshot", "स्क्रीनशॉट", "لقطة شاشة", "capture d'écran", "captura de pantalla"];
 
-function runCommand(rawCommand) {
+async function runCommand(rawCommand) {
   const command = rawCommand.toLowerCase().trim();
   if (!command) return true;
   setStatus("thinking");
@@ -1156,6 +1270,9 @@ function runCommand(rawCommand) {
     else if (OPEN_TRIGGER_WORDS.some(w => wordMatch(command, w)) && openApp(command)) { }
     else if (TIME_WORDS.some(w => command.includes(w)) || DATE_WORDS.some(w => command.includes(w))) { tellTimeOrDate(command); }
     else if (SEARCH_WORDS.some(w => command.includes(w))) { webSearch(command); }
+    else if (config.ai_enabled && config.ai_api_key) {
+      await askAI(rawCommand);
+    }
     else {
       speak(t("notUnderstood"));
     }
@@ -1180,6 +1297,9 @@ function openSettings() {
   $("cfgWakeWord").value = config.wake_word;
   $("cfgWeatherKey").value = config.weather_api_key;
   $("cfgCity").value = config.default_city;
+  $("cfgAiEnabled").checked = config.ai_enabled;
+  $("cfgAiKey").value = config.ai_api_key;
+  $("cfgAiModel").value = config.ai_model;
   renderContacts();
   renderMemoryPreview();
   settingsOverlay.classList.add("open");
@@ -1216,6 +1336,9 @@ function saveSettings() {
   config.wake_word = $("cfgWakeWord").value.trim().toLowerCase() || "jarvis";
   config.weather_api_key = $("cfgWeatherKey").value.trim();
   config.default_city = $("cfgCity").value.trim() || "Lahore";
+  config.ai_enabled = $("cfgAiEnabled").checked;
+  config.ai_api_key = $("cfgAiKey").value.trim();
+  config.ai_model = $("cfgAiModel").value;
   saveConfig();
 
   const newContacts = {};
