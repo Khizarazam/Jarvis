@@ -319,7 +319,8 @@
         <option value="gemini">Google Gemini — FREE (no credit card)</option>
         <option value="claude">Claude — paid (Anthropic)</option>
       </select>
-      <input id="cfgAiKey" type="password" placeholder="API key" style="margin-top:6px;" />
+      <label id="cfgAiKeyLabel" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:block;">API key</label>
+      <input id="cfgAiKey" type="text" placeholder="API key" style="margin-top:2px;" />
       <select id="cfgAiModel" style="margin-top:6px;"></select>
       <div class="note" id="aiProviderNote" style="margin-top:6px;"></div>
     </div>
@@ -1064,8 +1065,12 @@ const AI_MODELS_BY_PROVIDER = {
   ]
 };
 const AI_PROVIDER_NOTES = {
-  gemini: 'Free — get a key at <b>aistudio.google.com</b> → Get API key → Create API key (no credit card needed, ~1,500 requests/day free). Your key is stored only on this device and is used whenever a command doesn\'t match a built-in one.',
+  gemini: 'Free — Gemini\'s API doesn\'t allow direct calls from a browser, so this goes through a tiny free Cloudflare Worker proxy you deploy once (keeps your Gemini key off this device entirely). See <b>mobile/cloudflare-gemini-proxy.js</b> in the repo for the code + setup steps. Paste your worker\'s URL below (e.g. https://jarvis-proxy.yourname.workers.dev).',
   claude: 'Paid — get a key at <b>console.anthropic.com</b> → API Keys → Create Key (requires billing set up). Your key is stored only on this device and is used whenever a command doesn\'t match a built-in one.'
+};
+const AI_KEY_FIELD_LABELS = {
+  gemini: "Cloudflare Worker proxy URL",
+  claude: "Claude API key (sk-ant-...)"
 };
 
 function populateAiModelSelect() {
@@ -1074,6 +1079,9 @@ function populateAiModelSelect() {
   const models = AI_MODELS_BY_PROVIDER[provider] || [];
   sel.innerHTML = models.map(m => `<option value="${m.value}">${m.label}</option>`).join("");
   $("aiProviderNote").innerHTML = AI_PROVIDER_NOTES[provider] || "";
+  $("cfgAiKeyLabel").textContent = AI_KEY_FIELD_LABELS[provider] || "API key";
+  $("cfgAiKey").placeholder = provider === "gemini" ? "https://your-worker.yourname.workers.dev" : "sk-ant-...";
+  $("cfgAiKey").type = provider === "gemini" ? "text" : "password"; // proxy URL isn't secret, API keys are
 }
 
 function systemPromptForAI() {
@@ -1086,12 +1094,17 @@ function systemPromptForAI() {
 }
 
 async function callGemini(userText) {
-  const model = config.ai_model || "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.ai_api_key)}`;
-  const resp = await fetch(url, {
+  const proxyUrl = (config.ai_api_key || "").trim();
+  if (!proxyUrl || !/^https?:\/\//i.test(proxyUrl)) {
+    console.error("Gemini: no valid Cloudflare Worker proxy URL configured.");
+    speak(t("aiAuthError"));
+    return null;
+  }
+  const resp = await fetch(proxyUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      model: config.ai_model || "gemini-2.5-flash",
       contents: aiHistory.map(h => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })),
       systemInstruction: { parts: [{ text: systemPromptForAI() }] },
       generationConfig: { maxOutputTokens: 300 }
@@ -1099,7 +1112,7 @@ async function callGemini(userText) {
   });
   const data = await resp.json();
   if (!resp.ok) {
-    console.error("Gemini error:", data);
+    console.error("Gemini (via proxy) error:", data);
     if (resp.status === 400 || resp.status === 403) speak(t("aiAuthError"));
     else if (resp.status === 429) speak(t("aiRateLimit"));
     else speak(t("aiGenericError"));
@@ -1166,6 +1179,9 @@ async function askAI(userText) {
     console.error(e);
     aiHistory.pop();
     speak(t("aiNetErr"));
+    // Small technical note (not spoken) so the actual error is visible in
+    // the chat log for screenshots/troubleshooting, without cluttering speech.
+    addBubble(`(debug: ${e.message || e})`, "sys");
   }
 }
 
