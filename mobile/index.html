@@ -274,6 +274,18 @@
       <div class="note" id="langNote">This changes what the microphone listens for, the voice used to reply, and (for the first 6 languages) also translates Jarvis's replies. Roman Urdu/Hindi commands are understood regardless of this setting.</div>
     </div>
 
+    <div class="field">
+      <label>Voice (spoken replies)</label>
+      <select id="cfgVoice">
+        <option value="">Auto (best match for chosen language)</option>
+      </select>
+      <div class="note" id="voiceNote">
+        Voices are provided by your phone/browser, not by this app. If no Urdu male voice shows up, install one:
+        Android → Settings → System → Languages &amp; input → Text-to-speech output → (gear icon next to the engine) →
+        Install voice data → Urdu. Then reopen this page and check here again.
+      </div>
+    </div>
+
     <div class="toggle-row">
       <label style="font-size:12px;color:var(--text-dim);">Wake word enabled</label>
       <label class="switch"><input type="checkbox" id="cfgWakeEnabled" /><span class="slider"></span></label>
@@ -357,7 +369,8 @@ const DEFAULT_CONFIG = {
   wake_word_enabled: true,
   ai_enabled: false,
   ai_api_key: "",
-  ai_model: "claude-haiku-4-5-20251001"
+  ai_model: "claude-haiku-4-5-20251001",
+  voice_uri: ""
 };
 
 function loadJSON(key, fallback) {
@@ -712,6 +725,70 @@ function tickClock() {
 setInterval(tickClock, 1000); tickClock();
 
 // ---------- speech output ----------
+// Available system/browser voices — populated async by the browser and
+// re-populated whenever the underlying voice list changes (common on
+// Android Chrome, which loads voices a moment after the page starts).
+let availableVoices = [];
+
+function refreshVoices() {
+  if (!("speechSynthesis" in window)) return;
+  availableVoices = window.speechSynthesis.getVoices() || [];
+  populateVoiceSelect();
+}
+if ("speechSynthesis" in window) {
+  refreshVoices();
+  window.speechSynthesis.onvoiceschanged = refreshVoices;
+}
+
+// Many TTS engines encode gender in the voice name (e.g. "Urdu Male",
+// "ur-PK-x-male-local", "Microsoft Asad") since the Web Speech API itself
+// has no official gender field. This is a best-effort heuristic.
+const MALE_NAME_HINTS = /\bmale\b|\bmen\b|\basad\b|\bardi\b|\bfahad\b|\bhamid\b/i;
+const FEMALE_NAME_HINTS = /\bfemale\b|\bwomen\b|\bzeeshan\b|\bnaina\b|\bgul\b|\bzira\b/i;
+
+function scoreVoiceForLangAndGender(voice, langPrefix, preferMale) {
+  let score = 0;
+  if (voice.lang && voice.lang.toLowerCase().startsWith(langPrefix)) score += 10;
+  else if (voice.lang && voice.lang.toLowerCase().split("-")[0] === langPrefix.split("-")[0]) score += 5;
+  else return -1; // wrong language entirely — never usable for this language
+  if (preferMale && MALE_NAME_HINTS.test(voice.name)) score += 3;
+  if (preferMale && FEMALE_NAME_HINTS.test(voice.name)) score -= 3;
+  if (voice.localService) score += 1; // on-device voices tend to sound better / work offline
+  return score;
+}
+
+function pickBestVoice(langCode) {
+  if (!availableVoices.length) return null;
+  const langPrefix = (langCode || "en-US").toLowerCase();
+  let best = null, bestScore = -1;
+  for (const voice of availableVoices) {
+    const score = scoreVoiceForLangAndGender(voice, langPrefix, true);
+    if (score > bestScore) { bestScore = score; best = voice; }
+  }
+  return bestScore >= 0 ? best : null;
+}
+
+function populateVoiceSelect() {
+  const sel = $("cfgVoice");
+  if (!sel) return;
+  const currentValue = config.voice_uri || sel.value;
+  sel.innerHTML = '<option value="">Auto (best match for chosen language)</option>';
+  // Show voices matching the currently selected language first, then everything else.
+  const langPrefix = (config.language || "en-US").toLowerCase().split("-")[0];
+  const sorted = [...availableVoices].sort((a, b) => {
+    const aMatch = a.lang.toLowerCase().startsWith(langPrefix) ? 0 : 1;
+    const bMatch = b.lang.toLowerCase().startsWith(langPrefix) ? 0 : 1;
+    return aMatch - bMatch;
+  });
+  for (const voice of sorted) {
+    const opt = document.createElement("option");
+    opt.value = voice.voiceURI;
+    opt.textContent = `${voice.name} (${voice.lang})`;
+    sel.appendChild(opt);
+  }
+  if (currentValue) sel.value = currentValue;
+}
+
 function speak(text) {
   addBubble(text, "jarvis");
   if (!("speechSynthesis" in window)) return;
@@ -719,6 +796,22 @@ function speak(text) {
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = config.language;
+
+  // Voice priority: 1) exact voice the user picked in Settings,
+  // 2) best automatic match (prefers a male-sounding voice) for the
+  // current language, 3) let the browser fall back to its own default.
+  let chosenVoice = null;
+  if (config.voice_uri) {
+    chosenVoice = availableVoices.find(v => v.voiceURI === config.voice_uri) || null;
+  }
+  if (!chosenVoice) {
+    chosenVoice = pickBestVoice(config.language);
+  }
+  if (chosenVoice) {
+    u.voice = chosenVoice;
+    u.lang = chosenVoice.lang;
+  }
+
   u.rate = 1.0;
   u.onend = () => setStatus(recognizing ? "listening" : "idle");
   window.speechSynthesis.speak(u);
@@ -1300,6 +1393,9 @@ function openSettings() {
   $("cfgAiEnabled").checked = config.ai_enabled;
   $("cfgAiKey").value = config.ai_api_key;
   $("cfgAiModel").value = config.ai_model;
+  refreshVoices();
+  populateVoiceSelect();
+  $("cfgVoice").value = config.voice_uri || "";
   renderContacts();
   renderMemoryPreview();
   settingsOverlay.classList.add("open");
@@ -1323,6 +1419,10 @@ function addContactRow(name = "", phone = "") {
   $("contactsList").appendChild(row);
 }
 $("addContactBtn").addEventListener("click", () => addContactRow());
+$("cfgLang").addEventListener("change", () => {
+  config.language = $("cfgLang").value; // used transiently to sort the voice list
+  populateVoiceSelect();
+});
 $("resetMemoryBtn").addEventListener("click", () => {
   memory = { user_name: null, facts: {} };
   saveMemory();
@@ -1339,6 +1439,7 @@ function saveSettings() {
   config.ai_enabled = $("cfgAiEnabled").checked;
   config.ai_api_key = $("cfgAiKey").value.trim();
   config.ai_model = $("cfgAiModel").value;
+  config.voice_uri = $("cfgVoice").value;
   saveConfig();
 
   const newContacts = {};
