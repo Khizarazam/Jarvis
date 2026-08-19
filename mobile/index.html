@@ -432,6 +432,7 @@ const TRANSLATIONS = {
     batteryOnBattery: "on battery",
     batteryUnavailable: "This browser won't share battery info with a web page. Check your phone's status bar or Settings app instead.",
     notUnderstood: "I didn't understand that. Type 'commands' or tap the Commands button below to see what I can do.",
+    notUnderstoodAiOff: "I didn't understand that as a built-in command. You've added an AI key but 'Enable AI fallback' is off in Settings — turn it on so I can answer anything.",
     aiAuthError: "That Claude API key isn't valid. Check it in Settings.",
     aiRateLimit: "Claude's API is rate-limited or out of credit right now. Try again in a bit.",
     aiGenericError: "Sorry, I couldn't reach the AI right now.",
@@ -480,6 +481,7 @@ const TRANSLATIONS = {
     batteryOnBattery: "battery pe hai",
     batteryUnavailable: "Ye browser battery info web page ke saath share nahi karega. Phone ki status bar ya Settings app check karein.",
     notUnderstood: "Samajh nahi aaya. 'commands' type karein ya neeche Commands button dabayein taake pata chale main kya kar sakta hoon.",
+    notUnderstoodAiOff: "Yeh built-in command nahi hai. Aapne AI key daali hui hai lekin Settings mein 'Enable AI fallback' OFF hai — usay ON karein taake main kisi bhi sawal ka jawab de saku.",
     aiAuthError: "Ye Claude API key sahi nahi hai. Settings mein check karein.",
     aiRateLimit: "Claude ki API abhi rate-limited hai ya credit khatam hai. Thori dair baad try karein.",
     aiGenericError: "Maaf kijiye, abhi AI tak nahi pohnch saka.",
@@ -1422,6 +1424,9 @@ async function runCommand(rawCommand) {
     else if (config.ai_enabled && config.ai_api_key) {
       await askAI(rawCommand);
     }
+    else if (config.ai_api_key && !config.ai_enabled) {
+      speak(t("notUnderstoodAiOff"));
+    }
     else {
       speak(t("notUnderstood"));
     }
@@ -1482,6 +1487,11 @@ $("cfgLang").addEventListener("change", () => {
   populateVoiceSelect();
 });
 $("cfgAiProvider").addEventListener("change", populateAiModelSelect);
+// If someone pastes a key, they obviously want AI on — auto-tick the
+// checkbox so "I pasted a key but forgot to enable it" can't happen.
+$("cfgAiKey").addEventListener("input", () => {
+  if ($("cfgAiKey").value.trim()) $("cfgAiEnabled").checked = true;
+});
 $("resetMemoryBtn").addEventListener("click", () => {
   memory = { user_name: null, facts: {} };
   saveMemory();
