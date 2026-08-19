@@ -311,18 +311,17 @@
     </div>
 
     <div class="field">
-      <label>AI Assistant (Claude API — makes Jarvis understand anything, not just fixed commands)</label>
+      <label>AI Assistant (makes Jarvis understand anything, not just fixed commands)</label>
       <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:4px;">
         <input id="cfgAiEnabled" type="checkbox" style="width:auto;" /> Enable AI fallback
       </label>
-      <input id="cfgAiKey" type="password" placeholder="Claude API key (sk-ant-...)" style="margin-top:6px;" />
-      <select id="cfgAiModel" style="margin-top:6px;">
-        <option value="claude-haiku-4-5-20251001">Haiku 4.5 — fast &amp; cheap</option>
-        <option value="claude-sonnet-5">Sonnet 5 — smarter, slightly slower</option>
+      <select id="cfgAiProvider" style="margin-top:6px;">
+        <option value="gemini">Google Gemini — FREE (no credit card)</option>
+        <option value="claude">Claude — paid (Anthropic)</option>
       </select>
-      <div class="note" style="margin-top:6px;">
-        Get a key at <b>console.anthropic.com</b> → API Keys → Create Key. Your key is stored only on this device (never sent anywhere but Anthropic's API) and is used whenever a command doesn't match a built-in one.
-      </div>
+      <input id="cfgAiKey" type="password" placeholder="API key" style="margin-top:6px;" />
+      <select id="cfgAiModel" style="margin-top:6px;"></select>
+      <div class="note" id="aiProviderNote" style="margin-top:6px;"></div>
     </div>
 
     <div class="field">
@@ -369,7 +368,8 @@ const DEFAULT_CONFIG = {
   wake_word_enabled: true,
   ai_enabled: false,
   ai_api_key: "",
-  ai_model: "claude-haiku-4-5-20251001",
+  ai_provider: "gemini",
+  ai_model: "gemini-2.5-flash",
   voice_uri: ""
 };
 
@@ -1045,10 +1045,99 @@ async function checkWeather(command) {
   }
 }
 
-// ---------- AI fallback (Claude API) ----------
-// Keeps a short rolling history so follow-up questions have context.
-let aiHistory = [];
+// ---------- AI fallback (Gemini — free, or Claude — paid) ----------
+// Keeps a short rolling history, in a provider-neutral shape, so follow-up
+// questions have context regardless of which provider is active.
+let aiHistory = []; // [{ role: "user" | "assistant", text: "..." }]
 const AI_HISTORY_LIMIT = 10; // messages (user+assistant combined)
+
+const AI_MODELS_BY_PROVIDER = {
+  gemini: [
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — fast, free tier" },
+    { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite — fastest, free tier" }
+  ],
+  claude: [
+    { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 — fast & cheap" },
+    { value: "claude-sonnet-5", label: "Sonnet 5 — smarter, slightly slower" }
+  ]
+};
+const AI_PROVIDER_NOTES = {
+  gemini: 'Free — get a key at <b>aistudio.google.com</b> → Get API key → Create API key (no credit card needed, ~1,500 requests/day free). Your key is stored only on this device and is used whenever a command doesn\'t match a built-in one.',
+  claude: 'Paid — get a key at <b>console.anthropic.com</b> → API Keys → Create Key (requires billing set up). Your key is stored only on this device and is used whenever a command doesn\'t match a built-in one.'
+};
+
+function populateAiModelSelect() {
+  const provider = $("cfgAiProvider").value;
+  const sel = $("cfgAiModel");
+  const models = AI_MODELS_BY_PROVIDER[provider] || [];
+  sel.innerHTML = models.map(m => `<option value="${m.value}">${m.label}</option>`).join("");
+  $("aiProviderNote").innerHTML = AI_PROVIDER_NOTES[provider] || "";
+}
+
+function systemPromptForAI() {
+  return `You are ${config.assistant_name}, a concise, friendly voice assistant running inside a mobile app. ` +
+    `The user is speaking ${config.language === "ur-PK" ? "Roman Urdu / Urdu" : config.language}. ` +
+    `Reply naturally in the same language/style the user used (Roman Urdu is fine if that's what they used). ` +
+    `Keep replies short (1-3 sentences) since they are spoken aloud. ` +
+    `You cannot actually control the phone, send messages, or open apps yourself — if asked to DO something on-device, ` +
+    `explain you can only chat/answer, and suggest the built-in command for it if relevant (e.g. "whatsapp <name> <text>", "weather", "time", "open <app>").`;
+}
+
+async function callGemini(userText) {
+  const model = config.ai_model || "gemini-2.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.ai_api_key)}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: aiHistory.map(h => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })),
+      systemInstruction: { parts: [{ text: systemPromptForAI() }] },
+      generationConfig: { maxOutputTokens: 300 }
+    })
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    console.error("Gemini error:", data);
+    if (resp.status === 400 || resp.status === 403) speak(t("aiAuthError"));
+    else if (resp.status === 429) speak(t("aiRateLimit"));
+    else speak(t("aiGenericError"));
+    return null;
+  }
+  const cand = data.candidates && data.candidates[0];
+  const parts = cand && cand.content && cand.content.parts;
+  return (parts ? parts.map(p => p.text || "").join(" ") : "").trim();
+}
+
+async function callClaude(userText) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": config.ai_api_key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: config.ai_model || "claude-haiku-4-5-20251001",
+      max_tokens: 300,
+      system: systemPromptForAI(),
+      messages: aiHistory.map(h => ({ role: h.role, content: h.text }))
+    })
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    console.error("Claude error:", data);
+    if (resp.status === 401) speak(t("aiAuthError"));
+    else if (resp.status === 429) speak(t("aiRateLimit"));
+    else speak(t("aiGenericError"));
+    return null;
+  }
+  return (data.content || [])
+    .filter(block => block.type === "text")
+    .map(block => block.text)
+    .join(" ")
+    .trim();
+}
 
 async function askAI(userText) {
   if (!config.ai_api_key) {
@@ -1056,57 +1145,24 @@ async function askAI(userText) {
     return;
   }
   setStatus("thinking");
+  aiHistory.push({ role: "user", text: userText });
+  if (aiHistory.length > AI_HISTORY_LIMIT) aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
   try {
-    aiHistory.push({ role: "user", content: userText });
-    if (aiHistory.length > AI_HISTORY_LIMIT) aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
+    const replyText = config.ai_provider === "claude"
+      ? await callClaude(userText)
+      : await callGemini(userText);
 
-    const systemPrompt =
-      `You are ${config.assistant_name}, a concise, friendly voice assistant running inside a mobile app. ` +
-      `The user is speaking ${config.language === "ur" ? "Roman Urdu / Urdu" : config.language}. ` +
-      `Reply naturally in the same language/style the user used (Roman Urdu is fine if that's what they used). ` +
-      `Keep replies short (1-3 sentences) since they are spoken aloud. ` +
-      `You cannot actually control the phone, send messages, or open apps yourself — if asked to DO something on-device, ` +
-      `explain you can only chat/answer, and suggest the built-in command for it if relevant (e.g. "whatsapp <name> <text>", "weather", "time", "open <app>").`;
-
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": config.ai_api_key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: config.ai_model || "claude-haiku-4-5-20251001",
-        max_tokens: 300,
-        system: systemPrompt,
-        messages: aiHistory
-      })
-    });
-
-    const data = await resp.json();
-    if (!resp.ok) {
-      console.error("AI error:", data);
-      const msg = (data && data.error && data.error.message) || "";
-      if (resp.status === 401) speak(t("aiAuthError"));
-      else if (resp.status === 429) speak(t("aiRateLimit"));
-      else speak(t("aiGenericError"));
+    if (replyText === null) {
       aiHistory.pop(); // don't keep a failed turn in history
       return;
     }
-
-    const replyText = (data.content || [])
-      .filter(block => block.type === "text")
-      .map(block => block.text)
-      .join(" ")
-      .trim() || t("aiEmptyReply");
-
-    aiHistory.push({ role: "assistant", content: replyText });
+    const finalText = replyText || t("aiEmptyReply");
+    aiHistory.push({ role: "assistant", text: finalText });
     if (aiHistory.length > AI_HISTORY_LIMIT) aiHistory = aiHistory.slice(-AI_HISTORY_LIMIT);
-
-    speak(replyText);
+    speak(finalText);
   } catch (e) {
     console.error(e);
+    aiHistory.pop();
     speak(t("aiNetErr"));
   }
 }
@@ -1391,6 +1447,8 @@ function openSettings() {
   $("cfgWeatherKey").value = config.weather_api_key;
   $("cfgCity").value = config.default_city;
   $("cfgAiEnabled").checked = config.ai_enabled;
+  $("cfgAiProvider").value = config.ai_provider || "gemini";
+  populateAiModelSelect();
   $("cfgAiKey").value = config.ai_api_key;
   $("cfgAiModel").value = config.ai_model;
   refreshVoices();
@@ -1423,6 +1481,7 @@ $("cfgLang").addEventListener("change", () => {
   config.language = $("cfgLang").value; // used transiently to sort the voice list
   populateVoiceSelect();
 });
+$("cfgAiProvider").addEventListener("change", populateAiModelSelect);
 $("resetMemoryBtn").addEventListener("click", () => {
   memory = { user_name: null, facts: {} };
   saveMemory();
@@ -1437,6 +1496,7 @@ function saveSettings() {
   config.weather_api_key = $("cfgWeatherKey").value.trim();
   config.default_city = $("cfgCity").value.trim() || "Lahore";
   config.ai_enabled = $("cfgAiEnabled").checked;
+  config.ai_provider = $("cfgAiProvider").value;
   config.ai_api_key = $("cfgAiKey").value.trim();
   config.ai_model = $("cfgAiModel").value;
   config.voice_uri = $("cfgVoice").value;
