@@ -1116,6 +1116,8 @@ async function callGemini(userText) {
     if (resp.status === 400 || resp.status === 403) speak(t("aiAuthError"));
     else if (resp.status === 429) speak(t("aiRateLimit"));
     else speak(t("aiGenericError"));
+    const detail = (data && data.error && (data.error.message || data.error)) || JSON.stringify(data).slice(0, 200);
+    addBubble(`(debug: HTTP ${resp.status} — ${detail})`, "sys");
     return null;
   }
   const cand = data.candidates && data.candidates[0];
@@ -1145,6 +1147,8 @@ async function callClaude(userText) {
     if (resp.status === 401) speak(t("aiAuthError"));
     else if (resp.status === 429) speak(t("aiRateLimit"));
     else speak(t("aiGenericError"));
+    const detail = (data && data.error && (data.error.message || data.error)) || JSON.stringify(data).slice(0, 200);
+    addBubble(`(debug: HTTP ${resp.status} — ${detail})`, "sys");
     return null;
   }
   return (data.content || [])
